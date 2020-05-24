@@ -536,8 +536,8 @@ rating:
 # You can visit https://leancloud.cn get AppID and AppKey.
 leancloud_visitors:
   enable: false
-  app_id: #<app_id>
-  app_key: #<app_key>
+  app_id: z13JosmoyqbOFfSHh2il94jT-gzGzoHsz #<app_id>
+  app_key: 6M5O6i1vunQ7PT72izzGX5nq #<app_key>
 
 # Another tool to show number of visitors to each article.
 # visit https://console.firebase.google.com/u/0/ to get apiKey and projectId
