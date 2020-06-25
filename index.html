@@ -412,7 +412,7 @@
 
 
 <h3 id="MVCC-：-Multi-Version-Concurrency-Control-即多版本并发控制"><a href="#MVCC-：-Multi-Version-Concurrency-Control-即多版本并发控制" class="headerlink" title="MVCC ： Multi-Version Concurrency Control, 即多版本并发控制"></a>MVCC ： Multi-Version Concurrency Control, 即<strong>多版本并发控制</strong></h3><p>MVCC 是实现乐观锁的一种方案，用空间（多版本）以及回滚成本（冲突），保证可重复读且没有幻读（读小于自己事务ID的版本）避免（或减少）加锁。</p>
-<h3 id="整体思路"><a href="#整体思路" class="headerlink" title="整体思路"></a>整体思路</h3><ol>
+<h4 id="整体思路"><a href="#整体思路" class="headerlink" title="整体思路"></a>整体思路</h4><ol>
 <li><strong>多版本并发控制</strong>（MVCC），来实现 MySQL 上的<code>多事务``并发访问</code>时，隔离级别控制；</li>
 <li><strong>数据版本</strong>：并发事务执行时，同一行数据有多个版本</li>
 <li><strong>事务版本</strong>：每个事务都有一个事务版本</li>
@@ -424,15 +424,15 @@
 </li>
 </ol>
 <p><img src="https://wangxin201492.github.io/techImages/mvcc-version-relation.png" alt="mvcc-version-relation.png"></p>
-<h3 id="MVCC-本质"><a href="#MVCC-本质" class="headerlink" title="MVCC 本质"></a>MVCC 本质</h3><ol>
+<h4 id="MVCC-本质"><a href="#MVCC-本质" class="headerlink" title="MVCC 本质"></a>MVCC 本质</h4><ol>
 <li>本质使用了<code>copy-on-write</code>（写时复制），为每个数据保留多份 snapshot</li>
 <li>不同 snapshot 之间，使用<code>指针</code>连接成<code>链表</code>；</li>
 <li>创建事务，能看到的 snapshot 是受限的，是链表上，<code>小于等于</code>当前事务版本的<code>最大版本</code>（读取已提交：离当前事务<code>最近</code>的<code>已提交</code>版本）</li>
 <li><code>update</code> 操作，创建一个新的 snapshot，并使用事务版本，作为创建版本；</li>
 </ol>
 <p><img src="https://wangxin201492.github.io/techImages/mvcc-snapshot-list.png" alt="mvcc-snapshot-list.png"></p>
-<h3 id="MVCC-历史数据清理"><a href="#MVCC-历史数据清理" class="headerlink" title="MVCC 历史数据清理"></a>MVCC 历史数据清理</h3><p>// TODO</p>
-<h3 id="MVCC在事务中使用"><a href="#MVCC在事务中使用" class="headerlink" title="MVCC在事务中使用"></a>MVCC在事务中使用</h3><p>MVCC手段只适用于Msyql隔离级别中的读已提交（Read committed）和可重复读（Repeatable Read）</p>
+<h4 id="MVCC-历史数据清理"><a href="#MVCC-历史数据清理" class="headerlink" title="MVCC 历史数据清理"></a>MVCC 历史数据清理</h4><p>// TODO</p>
+<h4 id="MVCC在事务中使用"><a href="#MVCC在事务中使用" class="headerlink" title="MVCC在事务中使用"></a>MVCC在事务中使用</h4><p>MVCC手段只适用于Msyql隔离级别中的读已提交（Read committed）和可重复读（Repeatable Read）</p>
 <ol>
 <li>Read uncimmitted由于存在脏读，即能读到未提交事务的数据行，所以不适用MVCC。原因是MVCC的创建版本和删除版本只要在事务提交后才会产生。</li>
 <li>串行化由于是会对所涉及到的表加锁，并非行锁，自然也就不存在行的版本控制问题。</li>
@@ -444,7 +444,7 @@
 <li>在 <code>RC</code> 隔离级别下，每个 <code>SELECT</code> 语句开始时，都会重新将当前系统中的所有的活跃事务拷贝到一个列表生成 <code>ReadView</code> 。</li>
 </ol>
 <p>二者的区别就在于生成 <code>ReadView</code> 的时间点不同，一个是事务之后第一个 <code>SELECT</code> 语句开始、一个是事务中每条 <code>SELECT</code> 语句开始。</p>
-<h3 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h3><ul>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
 <li><a href="https://zhuanlan.zhihu.com/p/71156910" target="_blank" rel="noopener">https://zhuanlan.zhihu.com/p/71156910</a></li>
 <li><a href="https://segmentfault.com/a/1190000016611415" target="_blank" rel="noopener">https://segmentfault.com/a/1190000016611415</a></li>
 <li><a href="https://juejin.im/post/5b4977ae5188251b146b2fc8" target="_blank" rel="noopener">https://juejin.im/post/5b4977ae5188251b146b2fc8</a></li>
