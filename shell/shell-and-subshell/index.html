@@ -68,7 +68,7 @@
 
 
 
-  <meta name="keywords" content="protocol,TOTP," />
+  <meta name="keywords" content="[object Object]," />
 
 
 
@@ -79,17 +79,16 @@
 
 
 
-<meta name="description" content="1. OTPOTP(One-Time Password)译为一次性密码，也称动态口令。是使用密码技术实现的在客户端和服务器之间通过共享秘密的一种认证技术，是一种强认证技术，是增强目前静态口令认证的一种非常方便技术手段，是一种重要的双因素认证技术。 1.1 OTP的认证原理动态口令的基本认证原理是在认证双方共享密钥，也称种子密钥，并使用的同一个种子密钥对某一个事件计数、或时间值、或者是异步挑战数进行">
+<meta name="description" content="1. fork &amp; source &amp; exec在运行shell脚本时候，有三种方式来调用外部的脚本，exec(exec script.sh)、source(source script.sh)、fork(.&#x2F;script.sh) 1.1. exec（exec &#x2F;home&#x2F;script.sh）：使用exec来调用脚本，被执行的脚本会继承当前shell的环境变量。但事实上exec产生了新">
 <meta property="og:type" content="article">
-<meta property="og:title" content="【一次性密码】TOTP">
-<meta property="og:url" content="https://wangxin201492.github.io/protocol/TOTP/protocol-TOTP-overview/index.html">
+<meta property="og:title" content="【shell】shell与子shell那团乱麻">
+<meta property="og:url" content="https://wangxin201492.github.io/shell/shell-and-subshell/index.html">
 <meta property="og:site_name" content="wangxin201492">
-<meta property="og:description" content="1. OTPOTP(One-Time Password)译为一次性密码，也称动态口令。是使用密码技术实现的在客户端和服务器之间通过共享秘密的一种认证技术，是一种强认证技术，是增强目前静态口令认证的一种非常方便技术手段，是一种重要的双因素认证技术。 1.1 OTP的认证原理动态口令的基本认证原理是在认证双方共享密钥，也称种子密钥，并使用的同一个种子密钥对某一个事件计数、或时间值、或者是异步挑战数进行">
-<meta property="article:published_time" content="2015-12-08T12:45:00.000Z">
-<meta property="article:modified_time" content="2020-05-24T14:20:01.548Z">
+<meta property="og:description" content="1. fork &amp; source &amp; exec在运行shell脚本时候，有三种方式来调用外部的脚本，exec(exec script.sh)、source(source script.sh)、fork(.&#x2F;script.sh) 1.1. exec（exec &#x2F;home&#x2F;script.sh）：使用exec来调用脚本，被执行的脚本会继承当前shell的环境变量。但事实上exec产生了新">
+<meta property="article:published_time" content="2015-12-14T12:01:48.000Z">
+<meta property="article:modified_time" content="2020-06-25T12:10:41.792Z">
 <meta property="article:author" content="wangxin201492">
-<meta property="article:tag" content="protocol">
-<meta property="article:tag" content="TOTP">
+<meta property="article:tag" content="[object Object]">
 <meta name="twitter:card" content="summary">
 
 
@@ -120,13 +119,13 @@
 
 
 
-  <link rel="canonical" href="https://wangxin201492.github.io/protocol/TOTP/protocol-TOTP-overview/"/>
+  <link rel="canonical" href="https://wangxin201492.github.io/shell/shell-and-subshell/"/>
 
 
 
 
 
-  <title>【一次性密码】TOTP | wangxin201492</title>
+  <title>【shell】shell与子shell那团乱麻 | wangxin201492</title>
   
 
 
@@ -263,7 +262,7 @@
   
   
   <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/protocol/TOTP/protocol-TOTP-overview/">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/shell/shell-and-subshell/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="name" content="wangxin201492">
@@ -280,7 +279,7 @@
 
         
         
-          <h1 class="post-title" itemprop="name headline">【一次性密码】TOTP</h1>
+          <h1 class="post-title" itemprop="name headline">【shell】shell与子shell那团乱麻</h1>
         
 
         <div class="post-meta">
@@ -292,8 +291,8 @@
               
                 <span class="post-meta-item-text">发表于</span>
               
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-12-08T20:45:00+08:00">
-                2015-12-08
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-12-14T20:01:48+08:00">
+                2015-12-14
               </time>
             
 
@@ -315,19 +314,8 @@
               
               
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/protocol/" itemprop="url" rel="index">
-                    <span itemprop="name">protocol</span>
-                  </a>
-                </span>
-
-                
-                
-                  ， 
-                
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/protocol/TOTP/" itemprop="url" rel="index">
-                    <span itemprop="name">TOTP</span>
+                  <a href="/categories/shell/" itemprop="url" rel="index">
+                    <span itemprop="name">shell</span>
                   </a>
                 </span>
 
@@ -363,53 +351,24 @@
       
 
       
-        <h2 id="1-OTP"><a href="#1-OTP" class="headerlink" title="1. OTP"></a>1. OTP</h2><p><code>OTP(One-Time Password)</code>译为一次性密码，也称动态口令。是使用密码技术实现的在客户端和服务器之间通过共享秘密的一种认证技术，是一种强认证技术，是增强目前静态口令认证的一种非常方便技术手段，是一种重要的双因素认证技术。</p>
-<h3 id="1-1-OTP的认证原理"><a href="#1-1-OTP的认证原理" class="headerlink" title="1.1 OTP的认证原理"></a>1.1 OTP的认证原理</h3><p>动态口令的基本认证原理是在认证双方共享密钥，也称种子密钥，并使用的同一个种子密钥对某一个事件计数、或时间值、或者是异步挑战数进行密码算法计算，使用的算法有<code>对称算法</code>、<code>HASH</code>、<code>HMAC</code>，之后比较计算值是否一致进行认证。可以做到一次一个动态口令，使用后作废，口令长度通常为6-8个数字，使用方便，与通常的静态口令认证方式类似.</p>
-<h3 id="1-3-OTP的实现方式"><a href="#1-3-OTP的实现方式" class="headerlink" title="1.3 OTP的实现方式"></a>1.3 OTP的实现方式</h3><ol>
-<li>时间同步(<code>TOTP</code>)</li>
-<li>事件同步(<code>HOTP</code>)</li>
-<li>挑战/应答(<code>OCRA</code>)</li>
+        <h2 id="1-fork-amp-source-amp-exec"><a href="#1-fork-amp-source-amp-exec" class="headerlink" title="1. fork &amp; source &amp; exec"></a>1. <code>fork</code> &amp; <code>source</code> &amp; <code>exec</code></h2><p>在运行shell脚本时候，有三种方式来调用外部的脚本，<code>exec(exec script.sh)</code>、<code>source(source script.sh)</code>、<code>fork(./script.sh)</code></p>
+<h3 id="1-1-exec（exec-home-script-sh）："><a href="#1-1-exec（exec-home-script-sh）：" class="headerlink" title="1.1. exec（exec /home/script.sh）："></a>1.1. exec（exec /home/script.sh）：</h3><p>使用<code>exec</code>来调用脚本，被执行的脚本会继承当前shell的环境变量。<strong>但事实上<code>exec</code>产生了新的进程，他会把主shell的进程资源占用并替换脚本内容，继承了原主shell的PID号，即原主shell剩下的内容不会执行。</strong></p>
+<h3 id="1-2-source（source-home-script-sh）"><a href="#1-2-source（source-home-script-sh）" class="headerlink" title="1.2. source（source /home/script.sh）"></a>1.2. source（source /home/script.sh）</h3><p>使用<code>source</code>或者“<code>.</code>”来调用外部脚本，<strong>不会产生新的进程</strong>，继承当前shell环境变量，而且被调用的脚本运行结束后，<strong>它拥有的环境变量和声明变量会被当前shell保留</strong>，类似将调用脚本的内容复制过来直接执行。<strong>执行完毕后原主shell继续运行。</strong></p>
+<h3 id="1-3-fork（-home-script-sh）"><a href="#1-3-fork（-home-script-sh）" class="headerlink" title="1.3. fork（/home/script.sh）"></a>1.3. fork（/home/script.sh）</h3><p>直接运行脚本，会<strong>以当前shell为父进程，产生新的进程</strong>，并且<strong>继承主脚本的环境变量和声明变量</strong>。执行完毕后，<strong>主脚本不会保留其环境变量和声明变量</strong>。</p>
+<p>总结：这样来看<code>fork</code>最灵活，<code>source</code>次之，<code>exec</code>最诡异。</p>
+<h3 id="1-4-example"><a href="#1-4-example" class="headerlink" title="1.4. example"></a>1.4. example</h3><h5 id="主脚本"><a href="#主脚本" class="headerlink" title="主脚本"></a>主脚本</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/sh</span></span><br><span class="line">a=main</span><br><span class="line"></span><br><span class="line">echo "a is $a"</span><br><span class="line">echo "PID for parent before 2.sh:$$"</span><br><span class="line">case $1 in</span><br><span class="line">  exec)</span><br><span class="line">    echo "using exec"</span><br><span class="line">    exec ./2.sh ;;</span><br><span class="line">  source)</span><br><span class="line">    echo "using sourcing"</span><br><span class="line">    source ./2.sh ;;</span><br><span class="line">  *)</span><br><span class="line">    echo "using fork"</span><br><span class="line">    ./2.sh ;;</span><br><span class="line">esac</span><br><span class="line"></span><br><span class="line">echo "PID FOR parent after 2.sh :$$"</span><br><span class="line"></span><br><span class="line">echo "now main.sh a is $a"</span><br><span class="line">echo "$b"</span><br></pre></td></tr></table></figure>
+
+<h5 id="调用脚本：2-sh"><a href="#调用脚本：2-sh" class="headerlink" title="调用脚本：2.sh"></a>调用脚本：2.sh</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/sh</span></span><br><span class="line">echo "PID FOR 2.SH:$$"</span><br><span class="line"></span><br><span class="line">echo  "2.sh get a from main.sh is $a"</span><br><span class="line"></span><br><span class="line">a=2.sh</span><br><span class="line">export a</span><br><span class="line">b=3.sh</span><br><span class="line"></span><br><span class="line">echo "now 2.sh a is $a"</span><br></pre></td></tr></table></figure>
+
+<h5 id="执行结果："><a href="#执行结果：" class="headerlink" title="执行结果："></a>执行结果：</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh <span class="built_in">exec</span></span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19026</span><br><span class="line">using exec</span><br><span class="line">PID FOR 2.SH:19026</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh <span class="built_in">source</span></span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19027</span><br><span class="line">using sourcing</span><br><span class="line">PID FOR 2.SH:19027</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br><span class="line">PID FOR parent after 2.sh :19027</span><br><span class="line">now main.sh a is 2.sh</span><br><span class="line">3.sh</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh fork</span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19028</span><br><span class="line">using fork</span><br><span class="line">PID FOR 2.SH:19029</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br><span class="line">PID FOR parent after 2.sh :19028</span><br><span class="line">now main.sh a is main</span><br></pre></td></tr></table></figure>
+
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ol>
+<li><a href="http://qujunorz.blog.51cto.com/6378776/1541676" target="_blank" rel="noopener">http://qujunorz.blog.51cto.com/6378776/1541676</a></li>
 </ol>
-<h2 id="2-HOTP"><a href="#2-HOTP" class="headerlink" title="2. HOTP"></a>2. HOTP</h2><p><code>HOTP(HMAC-base On-Time Password)</code>译为基于HMAC的一次性密码，也称事件同步的动态密码。</p>
-<h3 id="2-1-HOTP的工作原理"><a href="#2-1-HOTP的工作原理" class="headerlink" title="2.1 HOTP的工作原理"></a>2.1 HOTP的工作原理</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">HTOP(K,C) &#x3D; Truncate(HMAC-SHA-1(K,C))</span><br></pre></td></tr></table></figure>
-
-
-<p>客户端和服务器事先协商好一个<code>密钥K</code>，用于一次性密码的生成过程。此外，客户端和服务器各有一个<code>计数器C</code>，并且事先将计数值同步。而<code>Truncate</code>是为了获得一个符合<code>HTOP</code>要求的值。</p>
-<h2 id="3-TOTP"><a href="#3-TOTP" class="headerlink" title="3 TOTP"></a>3 TOTP</h2><p><code>TOTP(Time-base One-Time Password)</code>译为基于时间的一次性密码，也称时间同步的动态密码.</p>
-<h3 id="3-1-TOTP的工作原理"><a href="#3-1-TOTP的工作原理" class="headerlink" title="3.1 TOTP的工作原理"></a>3.1 TOTP的工作原理</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">TOTP &#x3D; Truncate(HMAC-SHA-1(K,T))</span><br></pre></td></tr></table></figure>
-
-<p><code>TOTP</code>是<code>HOTP</code>的一个变种，将<code>HOTP</code>中的<code>计数器C</code>替换为依托时间的<code>参数T</code>，T是由当前时间(<code>CurrentUnixTime</code>、初始时间(T0)、步长(X)决定的。即：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">T &#x3D; (Current Unix time - T0) &#x2F; X</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li><code>CurrentUnixTime</code>：当前的Unix时间。</li>
-<li><code>T0</code>： 开始计步初始化时间，默认为0</li>
-<li><code>X</code> : 步长，默认情况下为30s</li>
-</ul>
-<h3 id="3-2-TOTP的要求"><a href="#3-2-TOTP的要求" class="headerlink" title="3.2 TOTP的要求"></a>3.2 TOTP的要求</h3><ol>
-<li>客户端和服务器必须能够彼此知道或者推算出对方的Unix Time</li>
-<li>客户端和服务器端必须共享一个密钥</li>
-<li>算法必须使用HOTP作为其关键实现环节</li>
-<li>客户端和服务器端必须使用相同的步长X</li>
-<li>每一个客户端必须拥有不同的密钥</li>
-<li>密钥的生成必须足够随机</li>
-<li>密钥必须储存在防篡改的设备上，而且不能在不安全的情况下被访问或使用。</li>
-<li>对该算法中T的实现必须大于<code>int32</code>，因为它在2038年将超出上限。</li>
-<li>T0和X的协商必须在之前的步骤中就已经做好了。</li>
-</ol>
-<h3 id="3-3-安全性考虑"><a href="#3-3-安全性考虑" class="headerlink" title="3.3 安全性考虑"></a>3.3 安全性考虑</h3><h4 id="3-3-1-安全性分析"><a href="#3-3-1-安全性分析" class="headerlink" title="3.3.1 安全性分析"></a>3.3.1 安全性分析</h4><p>该算法的安全性和健壮性完全依赖于其关键实现环节<code>HOTP</code>。</p>
-<p>安全性分析的结果是：在所有的测试中，该算法的结果均匀的、独立的分布。这个分析显示，最好的攻击和破解<code>TOTP(HOTP)</code>的方法是暴力破解。而在算法要求环节，要求key必须有足够的随机性。</p>
-<h4 id="3-3-2-时延兼容"><a href="#3-3-2-时延兼容" class="headerlink" title="3.3.2 时延兼容"></a>3.3.2 时延兼容</h4><p>在同一个步长内，动态密码生成的结果是一样的。当一个验证系统获得这个动态密码的时候，它并不知道动态密码的生产者是在哪个步长内产生的密码。由于网络的原因，客户端生成密码的时间和服务器接受密码的时间可能差距会很大，很有可能使得这2个时间不在同一个步长内。当一个动态密码产生在一个步长的结尾，服务器收到的密码很有可能在下一个步长的开始。</p>
-<p>验证系统应该设置一个策略允许动态密码的传输时延，不应该只验证当前步长的动态密码，还应该验证之前几个步长的动态密码。但越大的传输时延窗口设置，就会带来越大的风险被攻击，我们推荐最多设置一个时延窗口来兼容传输延时。</p>
-<h4 id="3-3-3-步长设置"><a href="#3-3-3-步长设置" class="headerlink" title="3.3.3 步长设置"></a>3.3.3 步长设置</h4><p>步长大小的设置，直接影响安全性和可用性:</p>
-<ol>
-<li>一个越大的步长，就会导致一个越大的窗口被攻击。当一个动态密码被生成而且在其有效期内暴露在第三方环境下，那么第三方系统就可以在该动态密码无效前使用这个密码。</li>
-<li>我们推荐默认的步长时间是<code>30s</code>，这个默认值是在权衡了安全性和可用性的基础上提出的。</li>
-<li>下一个动态密码肯定会在下一个步长生成，用户必须等待当前步长的结束。这个等待时间的理想值会随着步长的设置而增大。一个太长的窗口设置不使用网络用户登录这种场景，用户可能等不了一个步长的时间，就放弃登录。</li>
-</ol>
-<blockquote>
-<p>参考资料：<br><a href="http://blog.csdn.net/janronehoo/article/details/7590976" target="_blank" rel="noopener">http://blog.csdn.net/janronehoo/article/details/7590976</a><br><a href="http://www.dannysite.com/blog/165/" target="_blank" rel="noopener">http://www.dannysite.com/blog/165/</a><br><a href="https://tools.ietf.org/html/rfc6238" target="_blank" rel="noopener">https://tools.ietf.org/html/rfc6238</a></p>
-</blockquote>
 
       
     </div>
@@ -456,9 +415,7 @@
       
         <div class="post-tags">
           
-            <a href="/tags/protocol/" rel="tag"># protocol</a>
-          
-            <a href="/tags/TOTP/" rel="tag"># TOTP</a>
+            <a href="/tags/object-Object/" rel="tag"># [object Object]</a>
           
         </div>
       
@@ -471,8 +428,8 @@
         <div class="post-nav">
           <div class="post-nav-next post-nav-item">
             
-              <a href="/shell/shell-wait/" rel="next" title="【shell】我的wait为什么不能用">
-                <i class="fa fa-chevron-left"></i> 【shell】我的wait为什么不能用
+              <a href="/protocol/TOTP/protocol-TOTP-overview/" rel="next" title="【一次性密码】TOTP">
+                <i class="fa fa-chevron-left"></i> 【一次性密码】TOTP
               </a>
             
           </div>
@@ -481,8 +438,8 @@
 
           <div class="post-nav-prev post-nav-item">
             
-              <a href="/shell/shell-and-subshell/" rel="prev" title="【shell】shell与子shell那团乱麻">
-                【shell】shell与子shell那团乱麻 <i class="fa fa-chevron-right"></i>
+              <a href="/linux/linux-subsys-IO/linux-io-overview/" rel="prev" title="Linux IO子系统">
+                Linux IO子系统 <i class="fa fa-chevron-right"></i>
               </a>
             
           </div>
@@ -631,7 +588,7 @@
             
 
             
-              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-OTP"><span class="nav-number">1.</span> <span class="nav-text">1. OTP</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-OTP的认证原理"><span class="nav-number">1.1.</span> <span class="nav-text">1.1 OTP的认证原理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-OTP的实现方式"><span class="nav-number">1.2.</span> <span class="nav-text">1.3 OTP的实现方式</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-HOTP"><span class="nav-number">2.</span> <span class="nav-text">2. HOTP</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-HOTP的工作原理"><span class="nav-number">2.1.</span> <span class="nav-text">2.1 HOTP的工作原理</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-TOTP"><span class="nav-number">3.</span> <span class="nav-text">3 TOTP</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-1-TOTP的工作原理"><span class="nav-number">3.1.</span> <span class="nav-text">3.1 TOTP的工作原理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-TOTP的要求"><span class="nav-number">3.2.</span> <span class="nav-text">3.2 TOTP的要求</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-安全性考虑"><span class="nav-number">3.3.</span> <span class="nav-text">3.3 安全性考虑</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-1-安全性分析"><span class="nav-number">3.3.1.</span> <span class="nav-text">3.3.1 安全性分析</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-2-时延兼容"><span class="nav-number">3.3.2.</span> <span class="nav-text">3.3.2 时延兼容</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-3-步长设置"><span class="nav-number">3.3.3.</span> <span class="nav-text">3.3.3 步长设置</span></a></li></ol></li></ol></li></ol></div>
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-fork-amp-source-amp-exec"><span class="nav-number">1.</span> <span class="nav-text">1. fork &amp; source &amp; exec</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-exec（exec-home-script-sh）："><span class="nav-number">1.1.</span> <span class="nav-text">1.1. exec（exec &#x2F;home&#x2F;script.sh）：</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2-source（source-home-script-sh）"><span class="nav-number">1.2.</span> <span class="nav-text">1.2. source（source &#x2F;home&#x2F;script.sh）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-fork（-home-script-sh）"><span class="nav-number">1.3.</span> <span class="nav-text">1.3. fork（&#x2F;home&#x2F;script.sh）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-4-example"><span class="nav-number">1.4.</span> <span class="nav-text">1.4. example</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#主脚本"><span class="nav-number">1.4.0.1.</span> <span class="nav-text">主脚本</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#调用脚本：2-sh"><span class="nav-number">1.4.0.2.</span> <span class="nav-text">调用脚本：2.sh</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#执行结果："><span class="nav-number">1.4.0.3.</span> <span class="nav-text">执行结果：</span></a></li></ol></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#参考资料"><span class="nav-number">2.</span> <span class="nav-text">参考资料</span></a></li></ol></div>
             
 
           </div>

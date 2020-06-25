@@ -925,6 +925,165 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/shell/shell-and-subshell/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/shell/shell-and-subshell/" itemprop="url">【shell】shell与子shell那团乱麻</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-12-14T20:01:48+08:00">
+                2015-12-14
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/shell/" itemprop="url" rel="index">
+                    <span itemprop="name">shell</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="1-fork-amp-source-amp-exec"><a href="#1-fork-amp-source-amp-exec" class="headerlink" title="1. fork &amp; source &amp; exec"></a>1. <code>fork</code> &amp; <code>source</code> &amp; <code>exec</code></h2><p>在运行shell脚本时候，有三种方式来调用外部的脚本，<code>exec(exec script.sh)</code>、<code>source(source script.sh)</code>、<code>fork(./script.sh)</code></p>
+<h3 id="1-1-exec（exec-home-script-sh）："><a href="#1-1-exec（exec-home-script-sh）：" class="headerlink" title="1.1. exec（exec /home/script.sh）："></a>1.1. exec（exec /home/script.sh）：</h3><p>使用<code>exec</code>来调用脚本，被执行的脚本会继承当前shell的环境变量。<strong>但事实上<code>exec</code>产生了新的进程，他会把主shell的进程资源占用并替换脚本内容，继承了原主shell的PID号，即原主shell剩下的内容不会执行。</strong></p>
+<h3 id="1-2-source（source-home-script-sh）"><a href="#1-2-source（source-home-script-sh）" class="headerlink" title="1.2. source（source /home/script.sh）"></a>1.2. source（source /home/script.sh）</h3><p>使用<code>source</code>或者“<code>.</code>”来调用外部脚本，<strong>不会产生新的进程</strong>，继承当前shell环境变量，而且被调用的脚本运行结束后，<strong>它拥有的环境变量和声明变量会被当前shell保留</strong>，类似将调用脚本的内容复制过来直接执行。<strong>执行完毕后原主shell继续运行。</strong></p>
+<h3 id="1-3-fork（-home-script-sh）"><a href="#1-3-fork（-home-script-sh）" class="headerlink" title="1.3. fork（/home/script.sh）"></a>1.3. fork（/home/script.sh）</h3><p>直接运行脚本，会<strong>以当前shell为父进程，产生新的进程</strong>，并且<strong>继承主脚本的环境变量和声明变量</strong>。执行完毕后，<strong>主脚本不会保留其环境变量和声明变量</strong>。</p>
+<p>总结：这样来看<code>fork</code>最灵活，<code>source</code>次之，<code>exec</code>最诡异。</p>
+<h3 id="1-4-example"><a href="#1-4-example" class="headerlink" title="1.4. example"></a>1.4. example</h3><h5 id="主脚本"><a href="#主脚本" class="headerlink" title="主脚本"></a>主脚本</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/sh</span></span><br><span class="line">a=main</span><br><span class="line"></span><br><span class="line">echo "a is $a"</span><br><span class="line">echo "PID for parent before 2.sh:$$"</span><br><span class="line">case $1 in</span><br><span class="line">  exec)</span><br><span class="line">    echo "using exec"</span><br><span class="line">    exec ./2.sh ;;</span><br><span class="line">  source)</span><br><span class="line">    echo "using sourcing"</span><br><span class="line">    source ./2.sh ;;</span><br><span class="line">  *)</span><br><span class="line">    echo "using fork"</span><br><span class="line">    ./2.sh ;;</span><br><span class="line">esac</span><br><span class="line"></span><br><span class="line">echo "PID FOR parent after 2.sh :$$"</span><br><span class="line"></span><br><span class="line">echo "now main.sh a is $a"</span><br><span class="line">echo "$b"</span><br></pre></td></tr></table></figure>
+
+<h5 id="调用脚本：2-sh"><a href="#调用脚本：2-sh" class="headerlink" title="调用脚本：2.sh"></a>调用脚本：2.sh</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/sh</span></span><br><span class="line">echo "PID FOR 2.SH:$$"</span><br><span class="line"></span><br><span class="line">echo  "2.sh get a from main.sh is $a"</span><br><span class="line"></span><br><span class="line">a=2.sh</span><br><span class="line">export a</span><br><span class="line">b=3.sh</span><br><span class="line"></span><br><span class="line">echo "now 2.sh a is $a"</span><br></pre></td></tr></table></figure>
+
+<h5 id="执行结果："><a href="#执行结果：" class="headerlink" title="执行结果："></a>执行结果：</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh <span class="built_in">exec</span></span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19026</span><br><span class="line">using exec</span><br><span class="line">PID FOR 2.SH:19026</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh <span class="built_in">source</span></span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19027</span><br><span class="line">using sourcing</span><br><span class="line">PID FOR 2.SH:19027</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br><span class="line">PID FOR parent after 2.sh :19027</span><br><span class="line">now main.sh a is 2.sh</span><br><span class="line">3.sh</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh fork</span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19028</span><br><span class="line">using fork</span><br><span class="line">PID FOR 2.SH:19029</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br><span class="line">PID FOR parent after 2.sh :19028</span><br><span class="line">now main.sh a is main</span><br></pre></td></tr></table></figure>
+
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ol>
+<li><a href="http://qujunorz.blog.51cto.com/6378776/1541676" target="_blank" rel="noopener">http://qujunorz.blog.51cto.com/6378776/1541676</a></li>
+</ol>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/protocol/TOTP/protocol-TOTP-overview/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1111,6 +1270,428 @@
 
 
     
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/shell/shell-wait/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/shell/shell-wait/" itemprop="url">【shell】我的wait为什么不能用</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-10-14T20:01:48+08:00">
+                2015-10-14
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/shell/" itemprop="url" rel="index">
+                    <span itemprop="name">shell</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p>希望实现这样的一个功能：主脚本会运行几个后台进程，并希望这几个后台进程运行完之后，主进程才会退出。</p>
+<p>RT,设想一个文件a，希望a的每一行都表示一个后台进程，有如下内容：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">$ cat a</span><br><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td></tr></table></figure>
+
+<h2 id="方式1"><a href="#方式1" class="headerlink" title="方式1"></a>方式1</h2><p>脚本<code>test_wait_1</code>这样写：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/bash</span></span><br><span class="line"><span class="meta">#</span><span class="bash"> filename:test_wait_1</span></span><br><span class="line"></span><br><span class="line">cat a | while read line</span><br><span class="line">do</span><br><span class="line">    echo $line &amp;</span><br><span class="line">done</span><br><span class="line">wait</span><br><span class="line">echo "wait done"</span><br></pre></td></tr></table></figure>
+
+<p>运行结果：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">#result</span><br><span class="line">$ bash test_wait_1</span><br><span class="line">1</span><br><span class="line">5</span><br><span class="line">3</span><br><span class="line">wait done</span><br><span class="line">4</span><br><span class="line">2</span><br></pre></td></tr></table></figure>
+
+<p>显然，不尽如人意。</p>
+<h2 id="方式2"><a href="#方式2" class="headerlink" title="方式2"></a>方式2</h2><p>脚本<code>test_wait_2</code>,做了一下修改：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/bash</span></span><br><span class="line"><span class="meta">#</span><span class="bash"> filename:test_wait_2</span></span><br><span class="line"></span><br><span class="line">while read line</span><br><span class="line">do</span><br><span class="line">    echo $line &amp;</span><br><span class="line">done &lt; "a"</span><br><span class="line">wait</span><br><span class="line">echo "wait done"</span><br></pre></td></tr></table></figure>
+
+<p>运行结果：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">$ bash test_wait_2</span><br><span class="line">1</span><br><span class="line">2</span><br><span class="line">5</span><br><span class="line">4</span><br><span class="line">3</span><br><span class="line">wait done</span><br></pre></td></tr></table></figure>
+
+<p>结果符合预期！！</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>维基百科中有这样一段话：</p>
+<blockquote>
+<p>其中n是当前正在执行的后台进程的pid，或工作的工作ID。如果没有给定n，命令会等待shell调用的所有工作终止。</p>
+</blockquote>
+<blockquote>
+<p>wait一般返回最后一个工作的退出状态。如果n所指的工作不存在，或没有工作要等待，它会返回127。</p>
+</blockquote>
+<blockquote>
+<p>因为wait需要知道当前shell执行环境的工作表，它通常为shell内建命令。</p>
+</blockquote>
+<p>这样看来仿佛<code>test_wait_1</code>中的用法也没有什么问题，但实际上shell的管道<code>|</code>实际上是产生了一级子shell，也就是在<code>test_wait_1</code>中的后台进程<code>echo $line &amp;</code>是主进程子shell的后台进程。而<code>wait</code>只会等待当前进程的后台进程执行完毕，所以<code>test_wait_1</code>在遇到wait语句直接退出了。</p>
+<p>而<code>test_wait_2</code>中，通过<code>&lt; &quot;a&quot;</code>将a文件的内容标准输入到<code>while</code>中，并未通过管道输入到<code>while</code>中，所以后台进程属于主进程。wait会等待所有的后台进程完成以后退出，</p>
+<p>这也就是<code>test_wait_1</code>和<code>test_wait_2</code>这2个脚本运行的不同之处。</p>
+<h2 id="参考资料："><a href="#参考资料：" class="headerlink" title="参考资料："></a>参考资料：</h2><ul>
+<li><p><a href="https://zh.wikipedia.org/wiki/Wait_(%E5%91%BD%E4%BB%A4)" target="_blank" rel="noopener">https://zh.wikipedia.org/wiki/Wait_(%E5%91%BD%E4%BB%A4)</a></p>
+</li>
+<li><p><a href="http://blog.csdn.net/shuanghujushi/article/details/38186303" target="_blank" rel="noopener">http://blog.csdn.net/shuanghujushi/article/details/38186303</a></p>
+</li>
+</ul>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/shell/shell-find/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/shell/shell-find/" itemprop="url">【shell】再看一眼find--find使用中遇到的问题分析</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-08-14T20:01:48+08:00">
+                2015-08-14
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/shell/" itemprop="url" rel="index">
+                    <span itemprop="name">shell</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="1-简单find命令"><a href="#1-简单find命令" class="headerlink" title="1 简单find命令"></a>1 简单find命令</h2><h3 id="1-1-目录结构"><a href="#1-1-目录结构" class="headerlink" title="1.1 目录结构"></a>1.1 目录结构</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">代码1</span><br><span class="line">$ tree</span><br><span class="line">.</span><br><span class="line">|-- 2.log</span><br><span class="line">`-- backup</span><br><span class="line">    `-- 1.log</span><br><span class="line"></span><br><span class="line">3 directories, 0 files</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-2-简单的find命令"><a href="#1-2-简单的find命令" class="headerlink" title="1.2 简单的find命令"></a>1.2 简单的find命令</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">代码2</span><br><span class="line">$ find -path ./backup</span><br><span class="line">./backup</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-3-错误的通配符使用"><a href="#1-3-错误的通配符使用" class="headerlink" title="1.3 错误的通配符使用"></a>1.3 错误的通配符使用</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">代码3</span><br><span class="line">$ mkdir backup123</span><br><span class="line">$ find -path ./backup*</span><br><span class="line">find: paths must precede expression</span><br><span class="line">Usage: find [path...] [expression]</span><br></pre></td></tr></table></figure>
+
+<p><code>find</code>命令报错：路径必须先表达。问题分析（引自：<a href="http://www.cnblogs.com/baibaluo/archive/2012/08/16/2642403.html" target="_blank" rel="noopener">http://www.cnblogs.com/baibaluo/archive/2012/08/16/2642403.html</a>）:</p>
+<p>当目录下存在多个<code>backup*</code>，shell命令变成<code>find -path backup backup123</code>.此时，<code>-name</code>后面有2个匹配字符，shell报错。</p>
+<p><strong>解决办法</strong>：-path(-name)匹配的字符串已经要用单引号，或者双引号引住。</p>
+<h3 id="1-4-正确的通配符写法"><a href="#1-4-正确的通配符写法" class="headerlink" title="1.4 正确的通配符写法"></a>1.4 正确的通配符写法</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">代码4</span><br><span class="line">$ find -path <span class="string">'./backup*'</span></span><br><span class="line">./backup</span><br><span class="line">./backup/1.log</span><br><span class="line">./backup123</span><br></pre></td></tr></table></figure>
+
+<p>此时，命令运行正确！</p>
+<h2 id="2-find多条件"><a href="#2-find多条件" class="headerlink" title="2 find多条件"></a>2 find多条件</h2><p><code>expr1 expr2 -o expr3</code> 等同于 <code>expr1 -a expr2 -o expr3</code>.与其他语言中的<strong>与或非</strong>类似。并且是<strong>短路求值</strong></p>
+<h3 id="2-1-find多条件尝试-与"><a href="#2-1-find多条件尝试-与" class="headerlink" title="2.1 find多条件尝试:与"></a>2.1 find多条件尝试:与</h3><pre><code>代码5
+$ find -path ./backup -name &apos;*.log&apos;
+$</code></pre><p>没有任何返回结果。该语句的含义是：路径是path，并且名字是以.log结尾的文件。显然，并不存在。</p>
+<p>本语句实际上是想查找，backup下所有的以.log结尾的文件。应是：</p>
+<ol>
+<li><code>find -path &#39;./backup*&#39; -name &#39;*.log&#39;</code></li>
+</ol>
+<h3 id="2-2-find多条件尝试-或"><a href="#2-2-find多条件尝试-或" class="headerlink" title="2.2 find多条件尝试:或"></a>2.2 find多条件尝试:或</h3><pre><code>代码6
+$ find -path &apos;./backup*&apos; -o -name &apos;*.log&apos;
+./backup
+./backup/1.log
+./2.log
+./backup123</code></pre><p>到这个地方，<code>-a</code> 和 <code>-o</code>的体会已经一目了然了吧。这条命令展示了在backup*下的所有文件和以.log结尾的所有文件。</p>
+<h2 id="3-prune的体会"><a href="#3-prune的体会" class="headerlink" title="3 -prune的体会"></a>3 <code>-prune</code>的体会</h2><p>贴上这样的几条<code>shell</code>命令，请先自行体会：</p>
+<pre><code>代码7
+$ find -path &apos;./backup*&apos;
+./backup
+./backup/1.log
+./backup123
+$ find -path &apos;./backup*&apos; -prune
+./backup
+./backup123</code></pre><h3 id="3-1-prune的基本使用"><a href="#3-1-prune的基本使用" class="headerlink" title="3.1 prune的基本使用"></a>3.1 <code>prune</code>的基本使用</h3><p><code>-prune</code>在man中是这么说的</p>
+<blockquote>
+<p>If -depth is not given, true; do not descend the current directory.<br>If -depth is given, false; no effect.</p>
+</blockquote>
+<p>如果<code>find</code>语句中存在-depth选项，那么<code>-prune</code>将会被忽略。否则，<code>-prune</code>将声明不展开当前路径。</p>
+<p>这样在上述的1、2条命令中，由于<code>-prune</code>选项的存在，致使backup路径没有展开。所以1.log没有在打印列表中。</p>
+<p>我们再次做这样的尝试：</p>
+<pre><code>代码8
+$ touch backup123/3.log
+$ find -path &apos;./backup*&apos; -prune
+./backup
+./backup123
+$ find -path &apos;./backup*&apos;
+./backup
+./backup/1.log
+./backup123
+./backup123/3.log</code></pre><p>打印的结果和预期是一样的。</p>
+<p>按照上述<strong>2 find多条件</strong>中说道的那样，<code>find -path &#39;./backup*&#39;</code>获得所有backup前缀的文件，然后将结果和<code>-prune</code>相<code>与</code>：其实就是判断前者的结果中是否包含<strong>指定路径</strong>的子文件(夹)。</p>
+<h3 id="3-2-prune做排除路径用"><a href="#3-2-prune做排除路径用" class="headerlink" title="3.2 prune做排除路径用"></a>3.2 <code>prune</code>做排除路径用</h3><p>而一般情况下<code>prune</code>是这样使用的</p>
+<pre><code>代码9
+$ find -path &apos;./backup*&apos; -prune -o -name &apos;*.log&apos; -print
+./2.log</code></pre><p>指代的意思是当前路径除去<code>backup*</code>文件夹外的所有<code>*.log</code>文件。</p>
+<h4 id="3-2-1-一个问题"><a href="#3-2-1-一个问题" class="headerlink" title="3.2.1 一个问题"></a>3.2.1 一个问题</h4><p>这样是如愿以偿了，但是我们执行一下这样的一条命令：</p>
+<pre><code>代码10
+$ find -path &apos;./backup*&apos; -o -name &apos;*.log&apos; -print
+./2.log</code></pre><p>返回的结果一模一样。</p>
+<h4 id="3-2-2-进一步剖析"><a href="#3-2-2-进一步剖析" class="headerlink" title="3.2.2 进一步剖析"></a>3.2.2 进一步剖析</h4><p>这个问题我们暂且搁置不论，继续来看这样的2个命令：</p>
+<pre><code>代码11
+$ find -path &apos;./backup*&apos; -prune -o -name &apos;*.log&apos;
+./backup
+./2.log
+./backup123
+$ find -path &apos;./backup*&apos;  -o -name &apos;*.log&apos;
+./backup
+./backup/1.log
+./2.log
+./backup123</code></pre><p>2个结果集中只是缺少了<code>./backup/1.log</code>，<code>-prune</code>做到的只是一个收缩路径的功能。</p>
+<p>再继续对比这2个命令和上面两个命令，缺少的是一个<code>-print</code>.其实在man里面有这样的一句话<strong>“If no expression is given, the expression ‘-print’ is used.”</strong></p>
+<p>也就是说<code>-print</code>是个默认值，那么上面2组命令实际上可以这样看待：</p>
+<table>
+<thead>
+<tr>
+<th align="center">输入命令</th>
+<th align="center">实际命令</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center"><code>find -path &#39;./backup*&#39; -o -name &#39;*.log&#39;</code></td>
+<td align="center"><code>find \( -path &#39;./backup*&#39; -o -name &#39;*.log&#39; \) -print</code></td>
+</tr>
+<tr>
+<td align="center"><code>find -path &#39;./backup*&#39; -o -name &#39;*.log&#39; -print</code></td>
+<td align="center"><code>find \( -path &#39;./backup*&#39; \) -o \( -name &#39;*.log&#39; -print \)</code></td>
+</tr>
+</tbody></table>
+<p><strong>代码9</strong> 和 <strong>代码10</strong>中的片段可以理解为打印<code>-path &#39;./backup*&#39;</code>为false 、 <code>-name &#39;*.log&#39;</code> 为true的find结果。</p>
+<p>而<strong>代码11</strong>中的片段则是将<code>-path &#39;./backup*&#39; -o -name &#39;*.log&#39;</code>过滤后所有为true的结果都打印。</p>
+<h4 id="3-2-3-总结"><a href="#3-2-3-总结" class="headerlink" title="3.2.3 总结"></a>3.2.3 总结</h4><p>那么这样看来，其实排除路径其实是将<code>-print</code>放置到了-o后面作为输出。而<code>-path &#39;./backup*&#39;</code>执行过，并且返回true，单并未被打印。</p>
+<p>那么是不是说，其实，其实，其实<code>-prune</code>并没有什么用？</p>
+<h2 id="4-总结：多一点角度看find"><a href="#4-总结：多一点角度看find" class="headerlink" title="4 总结：多一点角度看find"></a>4 总结：多一点角度看find</h2><p>其实可以认为</p>
+<ol>
+<li>find无可避免的对指定路径进行了全文搜索，默认情况下是深度优先搜索(只有在指定-depth的时候使用广度优先搜索)。</li>
+<li>find进行全文搜索以后，将结果扔到后面的过滤条件中，按照<strong>与或非</strong>的规则，逐条过滤。</li>
+<li>最终返回值为true的item被打印了出来</li>
+</ol>
+<p>试想这样一个场景，在一个java项目中，由于项目庞大，总文件数上万。想要找到最深2级目录下所有的java文件。</p>
+<pre><code>find . -name &quot;*.java&quot; -maxdepth 2
+find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令，显然第二条的执行效率会快！！！<code>-maxdepth 2</code> 极大程度的进行了一次结果过滤。</p>
+<p>那么在写find命令的时候，应该把能最大程度减小结果集的结果放到前面。</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
   </section>
 
   
@@ -1157,7 +1738,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">3</span>
+                  <span class="site-state-item-count">6</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -1168,7 +1749,7 @@
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">6</span>
+                  <span class="site-state-item-count">7</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
@@ -1179,7 +1760,7 @@
               
               <div class="site-state-item site-state-tags">
                 <a href="/tags/index.html">
-                  <span class="site-state-item-count">6</span>
+                  <span class="site-state-item-count">7</span>
                   <span class="site-state-item-name">标签</span>
                 </a>
               </div>

@@ -68,7 +68,7 @@
 
 
 
-  <meta name="keywords" content="protocol,TOTP," />
+  <meta name="keywords" content="[object Object]," />
 
 
 
@@ -79,17 +79,16 @@
 
 
 
-<meta name="description" content="1. OTPOTP(One-Time Password)译为一次性密码，也称动态口令。是使用密码技术实现的在客户端和服务器之间通过共享秘密的一种认证技术，是一种强认证技术，是增强目前静态口令认证的一种非常方便技术手段，是一种重要的双因素认证技术。 1.1 OTP的认证原理动态口令的基本认证原理是在认证双方共享密钥，也称种子密钥，并使用的同一个种子密钥对某一个事件计数、或时间值、或者是异步挑战数进行">
+<meta name="description" content="希望实现这样的一个功能：主脚本会运行几个后台进程，并希望这几个后台进程运行完之后，主进程才会退出。 RT,设想一个文件a，希望a的每一行都表示一个后台进程，有如下内容： 123456$ cat a12345  方式1脚本test_wait_1这样写： 123456789#!&#x2F;bin&#x2F;bash# filename:test_wait_1cat a | while read linedo    ech">
 <meta property="og:type" content="article">
-<meta property="og:title" content="【一次性密码】TOTP">
-<meta property="og:url" content="https://wangxin201492.github.io/protocol/TOTP/protocol-TOTP-overview/index.html">
+<meta property="og:title" content="【shell】我的wait为什么不能用">
+<meta property="og:url" content="https://wangxin201492.github.io/shell/shell-wait/index.html">
 <meta property="og:site_name" content="wangxin201492">
-<meta property="og:description" content="1. OTPOTP(One-Time Password)译为一次性密码，也称动态口令。是使用密码技术实现的在客户端和服务器之间通过共享秘密的一种认证技术，是一种强认证技术，是增强目前静态口令认证的一种非常方便技术手段，是一种重要的双因素认证技术。 1.1 OTP的认证原理动态口令的基本认证原理是在认证双方共享密钥，也称种子密钥，并使用的同一个种子密钥对某一个事件计数、或时间值、或者是异步挑战数进行">
-<meta property="article:published_time" content="2015-12-08T12:45:00.000Z">
-<meta property="article:modified_time" content="2020-05-24T14:20:01.548Z">
+<meta property="og:description" content="希望实现这样的一个功能：主脚本会运行几个后台进程，并希望这几个后台进程运行完之后，主进程才会退出。 RT,设想一个文件a，希望a的每一行都表示一个后台进程，有如下内容： 123456$ cat a12345  方式1脚本test_wait_1这样写： 123456789#!&#x2F;bin&#x2F;bash# filename:test_wait_1cat a | while read linedo    ech">
+<meta property="article:published_time" content="2015-10-14T12:01:48.000Z">
+<meta property="article:modified_time" content="2020-06-25T12:10:33.697Z">
 <meta property="article:author" content="wangxin201492">
-<meta property="article:tag" content="protocol">
-<meta property="article:tag" content="TOTP">
+<meta property="article:tag" content="[object Object]">
 <meta name="twitter:card" content="summary">
 
 
@@ -120,13 +119,13 @@
 
 
 
-  <link rel="canonical" href="https://wangxin201492.github.io/protocol/TOTP/protocol-TOTP-overview/"/>
+  <link rel="canonical" href="https://wangxin201492.github.io/shell/shell-wait/"/>
 
 
 
 
 
-  <title>【一次性密码】TOTP | wangxin201492</title>
+  <title>【shell】我的wait为什么不能用 | wangxin201492</title>
   
 
 
@@ -263,7 +262,7 @@
   
   
   <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/protocol/TOTP/protocol-TOTP-overview/">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/shell/shell-wait/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="name" content="wangxin201492">
@@ -280,7 +279,7 @@
 
         
         
-          <h1 class="post-title" itemprop="name headline">【一次性密码】TOTP</h1>
+          <h1 class="post-title" itemprop="name headline">【shell】我的wait为什么不能用</h1>
         
 
         <div class="post-meta">
@@ -292,8 +291,8 @@
               
                 <span class="post-meta-item-text">发表于</span>
               
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-12-08T20:45:00+08:00">
-                2015-12-08
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-10-14T20:01:48+08:00">
+                2015-10-14
               </time>
             
 
@@ -315,19 +314,8 @@
               
               
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/protocol/" itemprop="url" rel="index">
-                    <span itemprop="name">protocol</span>
-                  </a>
-                </span>
-
-                
-                
-                  ， 
-                
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/protocol/TOTP/" itemprop="url" rel="index">
-                    <span itemprop="name">TOTP</span>
+                  <a href="/categories/shell/" itemprop="url" rel="index">
+                    <span itemprop="name">shell</span>
                   </a>
                 </span>
 
@@ -363,53 +351,43 @@
       
 
       
-        <h2 id="1-OTP"><a href="#1-OTP" class="headerlink" title="1. OTP"></a>1. OTP</h2><p><code>OTP(One-Time Password)</code>译为一次性密码，也称动态口令。是使用密码技术实现的在客户端和服务器之间通过共享秘密的一种认证技术，是一种强认证技术，是增强目前静态口令认证的一种非常方便技术手段，是一种重要的双因素认证技术。</p>
-<h3 id="1-1-OTP的认证原理"><a href="#1-1-OTP的认证原理" class="headerlink" title="1.1 OTP的认证原理"></a>1.1 OTP的认证原理</h3><p>动态口令的基本认证原理是在认证双方共享密钥，也称种子密钥，并使用的同一个种子密钥对某一个事件计数、或时间值、或者是异步挑战数进行密码算法计算，使用的算法有<code>对称算法</code>、<code>HASH</code>、<code>HMAC</code>，之后比较计算值是否一致进行认证。可以做到一次一个动态口令，使用后作废，口令长度通常为6-8个数字，使用方便，与通常的静态口令认证方式类似.</p>
-<h3 id="1-3-OTP的实现方式"><a href="#1-3-OTP的实现方式" class="headerlink" title="1.3 OTP的实现方式"></a>1.3 OTP的实现方式</h3><ol>
-<li>时间同步(<code>TOTP</code>)</li>
-<li>事件同步(<code>HOTP</code>)</li>
-<li>挑战/应答(<code>OCRA</code>)</li>
-</ol>
-<h2 id="2-HOTP"><a href="#2-HOTP" class="headerlink" title="2. HOTP"></a>2. HOTP</h2><p><code>HOTP(HMAC-base On-Time Password)</code>译为基于HMAC的一次性密码，也称事件同步的动态密码。</p>
-<h3 id="2-1-HOTP的工作原理"><a href="#2-1-HOTP的工作原理" class="headerlink" title="2.1 HOTP的工作原理"></a>2.1 HOTP的工作原理</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">HTOP(K,C) &#x3D; Truncate(HMAC-SHA-1(K,C))</span><br></pre></td></tr></table></figure>
+        <p>希望实现这样的一个功能：主脚本会运行几个后台进程，并希望这几个后台进程运行完之后，主进程才会退出。</p>
+<p>RT,设想一个文件a，希望a的每一行都表示一个后台进程，有如下内容：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">$ cat a</span><br><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td></tr></table></figure>
 
+<h2 id="方式1"><a href="#方式1" class="headerlink" title="方式1"></a>方式1</h2><p>脚本<code>test_wait_1</code>这样写：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/bash</span></span><br><span class="line"><span class="meta">#</span><span class="bash"> filename:test_wait_1</span></span><br><span class="line"></span><br><span class="line">cat a | while read line</span><br><span class="line">do</span><br><span class="line">    echo $line &amp;</span><br><span class="line">done</span><br><span class="line">wait</span><br><span class="line">echo "wait done"</span><br></pre></td></tr></table></figure>
 
-<p>客户端和服务器事先协商好一个<code>密钥K</code>，用于一次性密码的生成过程。此外，客户端和服务器各有一个<code>计数器C</code>，并且事先将计数值同步。而<code>Truncate</code>是为了获得一个符合<code>HTOP</code>要求的值。</p>
-<h2 id="3-TOTP"><a href="#3-TOTP" class="headerlink" title="3 TOTP"></a>3 TOTP</h2><p><code>TOTP(Time-base One-Time Password)</code>译为基于时间的一次性密码，也称时间同步的动态密码.</p>
-<h3 id="3-1-TOTP的工作原理"><a href="#3-1-TOTP的工作原理" class="headerlink" title="3.1 TOTP的工作原理"></a>3.1 TOTP的工作原理</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">TOTP &#x3D; Truncate(HMAC-SHA-1(K,T))</span><br></pre></td></tr></table></figure>
+<p>运行结果：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">#result</span><br><span class="line">$ bash test_wait_1</span><br><span class="line">1</span><br><span class="line">5</span><br><span class="line">3</span><br><span class="line">wait done</span><br><span class="line">4</span><br><span class="line">2</span><br></pre></td></tr></table></figure>
 
-<p><code>TOTP</code>是<code>HOTP</code>的一个变种，将<code>HOTP</code>中的<code>计数器C</code>替换为依托时间的<code>参数T</code>，T是由当前时间(<code>CurrentUnixTime</code>、初始时间(T0)、步长(X)决定的。即：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">T &#x3D; (Current Unix time - T0) &#x2F; X</span><br></pre></td></tr></table></figure>
+<p>显然，不尽如人意。</p>
+<h2 id="方式2"><a href="#方式2" class="headerlink" title="方式2"></a>方式2</h2><p>脚本<code>test_wait_2</code>,做了一下修改：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/bash</span></span><br><span class="line"><span class="meta">#</span><span class="bash"> filename:test_wait_2</span></span><br><span class="line"></span><br><span class="line">while read line</span><br><span class="line">do</span><br><span class="line">    echo $line &amp;</span><br><span class="line">done &lt; "a"</span><br><span class="line">wait</span><br><span class="line">echo "wait done"</span><br></pre></td></tr></table></figure>
 
-<ul>
-<li><code>CurrentUnixTime</code>：当前的Unix时间。</li>
-<li><code>T0</code>： 开始计步初始化时间，默认为0</li>
-<li><code>X</code> : 步长，默认情况下为30s</li>
-</ul>
-<h3 id="3-2-TOTP的要求"><a href="#3-2-TOTP的要求" class="headerlink" title="3.2 TOTP的要求"></a>3.2 TOTP的要求</h3><ol>
-<li>客户端和服务器必须能够彼此知道或者推算出对方的Unix Time</li>
-<li>客户端和服务器端必须共享一个密钥</li>
-<li>算法必须使用HOTP作为其关键实现环节</li>
-<li>客户端和服务器端必须使用相同的步长X</li>
-<li>每一个客户端必须拥有不同的密钥</li>
-<li>密钥的生成必须足够随机</li>
-<li>密钥必须储存在防篡改的设备上，而且不能在不安全的情况下被访问或使用。</li>
-<li>对该算法中T的实现必须大于<code>int32</code>，因为它在2038年将超出上限。</li>
-<li>T0和X的协商必须在之前的步骤中就已经做好了。</li>
-</ol>
-<h3 id="3-3-安全性考虑"><a href="#3-3-安全性考虑" class="headerlink" title="3.3 安全性考虑"></a>3.3 安全性考虑</h3><h4 id="3-3-1-安全性分析"><a href="#3-3-1-安全性分析" class="headerlink" title="3.3.1 安全性分析"></a>3.3.1 安全性分析</h4><p>该算法的安全性和健壮性完全依赖于其关键实现环节<code>HOTP</code>。</p>
-<p>安全性分析的结果是：在所有的测试中，该算法的结果均匀的、独立的分布。这个分析显示，最好的攻击和破解<code>TOTP(HOTP)</code>的方法是暴力破解。而在算法要求环节，要求key必须有足够的随机性。</p>
-<h4 id="3-3-2-时延兼容"><a href="#3-3-2-时延兼容" class="headerlink" title="3.3.2 时延兼容"></a>3.3.2 时延兼容</h4><p>在同一个步长内，动态密码生成的结果是一样的。当一个验证系统获得这个动态密码的时候，它并不知道动态密码的生产者是在哪个步长内产生的密码。由于网络的原因，客户端生成密码的时间和服务器接受密码的时间可能差距会很大，很有可能使得这2个时间不在同一个步长内。当一个动态密码产生在一个步长的结尾，服务器收到的密码很有可能在下一个步长的开始。</p>
-<p>验证系统应该设置一个策略允许动态密码的传输时延，不应该只验证当前步长的动态密码，还应该验证之前几个步长的动态密码。但越大的传输时延窗口设置，就会带来越大的风险被攻击，我们推荐最多设置一个时延窗口来兼容传输延时。</p>
-<h4 id="3-3-3-步长设置"><a href="#3-3-3-步长设置" class="headerlink" title="3.3.3 步长设置"></a>3.3.3 步长设置</h4><p>步长大小的设置，直接影响安全性和可用性:</p>
-<ol>
-<li>一个越大的步长，就会导致一个越大的窗口被攻击。当一个动态密码被生成而且在其有效期内暴露在第三方环境下，那么第三方系统就可以在该动态密码无效前使用这个密码。</li>
-<li>我们推荐默认的步长时间是<code>30s</code>，这个默认值是在权衡了安全性和可用性的基础上提出的。</li>
-<li>下一个动态密码肯定会在下一个步长生成，用户必须等待当前步长的结束。这个等待时间的理想值会随着步长的设置而增大。一个太长的窗口设置不使用网络用户登录这种场景，用户可能等不了一个步长的时间，就放弃登录。</li>
-</ol>
+<p>运行结果：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">$ bash test_wait_2</span><br><span class="line">1</span><br><span class="line">2</span><br><span class="line">5</span><br><span class="line">4</span><br><span class="line">3</span><br><span class="line">wait done</span><br></pre></td></tr></table></figure>
+
+<p>结果符合预期！！</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>维基百科中有这样一段话：</p>
 <blockquote>
-<p>参考资料：<br><a href="http://blog.csdn.net/janronehoo/article/details/7590976" target="_blank" rel="noopener">http://blog.csdn.net/janronehoo/article/details/7590976</a><br><a href="http://www.dannysite.com/blog/165/" target="_blank" rel="noopener">http://www.dannysite.com/blog/165/</a><br><a href="https://tools.ietf.org/html/rfc6238" target="_blank" rel="noopener">https://tools.ietf.org/html/rfc6238</a></p>
+<p>其中n是当前正在执行的后台进程的pid，或工作的工作ID。如果没有给定n，命令会等待shell调用的所有工作终止。</p>
 </blockquote>
+<blockquote>
+<p>wait一般返回最后一个工作的退出状态。如果n所指的工作不存在，或没有工作要等待，它会返回127。</p>
+</blockquote>
+<blockquote>
+<p>因为wait需要知道当前shell执行环境的工作表，它通常为shell内建命令。</p>
+</blockquote>
+<p>这样看来仿佛<code>test_wait_1</code>中的用法也没有什么问题，但实际上shell的管道<code>|</code>实际上是产生了一级子shell，也就是在<code>test_wait_1</code>中的后台进程<code>echo $line &amp;</code>是主进程子shell的后台进程。而<code>wait</code>只会等待当前进程的后台进程执行完毕，所以<code>test_wait_1</code>在遇到wait语句直接退出了。</p>
+<p>而<code>test_wait_2</code>中，通过<code>&lt; &quot;a&quot;</code>将a文件的内容标准输入到<code>while</code>中，并未通过管道输入到<code>while</code>中，所以后台进程属于主进程。wait会等待所有的后台进程完成以后退出，</p>
+<p>这也就是<code>test_wait_1</code>和<code>test_wait_2</code>这2个脚本运行的不同之处。</p>
+<h2 id="参考资料："><a href="#参考资料：" class="headerlink" title="参考资料："></a>参考资料：</h2><ul>
+<li><p><a href="https://zh.wikipedia.org/wiki/Wait_(%E5%91%BD%E4%BB%A4)" target="_blank" rel="noopener">https://zh.wikipedia.org/wiki/Wait_(%E5%91%BD%E4%BB%A4)</a></p>
+</li>
+<li><p><a href="http://blog.csdn.net/shuanghujushi/article/details/38186303" target="_blank" rel="noopener">http://blog.csdn.net/shuanghujushi/article/details/38186303</a></p>
+</li>
+</ul>
 
       
     </div>
@@ -456,9 +434,7 @@
       
         <div class="post-tags">
           
-            <a href="/tags/protocol/" rel="tag"># protocol</a>
-          
-            <a href="/tags/TOTP/" rel="tag"># TOTP</a>
+            <a href="/tags/object-Object/" rel="tag"># [object Object]</a>
           
         </div>
       
@@ -471,8 +447,8 @@
         <div class="post-nav">
           <div class="post-nav-next post-nav-item">
             
-              <a href="/shell/shell-wait/" rel="next" title="【shell】我的wait为什么不能用">
-                <i class="fa fa-chevron-left"></i> 【shell】我的wait为什么不能用
+              <a href="/shell/shell-find/" rel="next" title="【shell】再看一眼find--find使用中遇到的问题分析">
+                <i class="fa fa-chevron-left"></i> 【shell】再看一眼find--find使用中遇到的问题分析
               </a>
             
           </div>
@@ -481,8 +457,8 @@
 
           <div class="post-nav-prev post-nav-item">
             
-              <a href="/shell/shell-and-subshell/" rel="prev" title="【shell】shell与子shell那团乱麻">
-                【shell】shell与子shell那团乱麻 <i class="fa fa-chevron-right"></i>
+              <a href="/protocol/TOTP/protocol-TOTP-overview/" rel="prev" title="【一次性密码】TOTP">
+                【一次性密码】TOTP <i class="fa fa-chevron-right"></i>
               </a>
             
           </div>
@@ -631,7 +607,7 @@
             
 
             
-              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-OTP"><span class="nav-number">1.</span> <span class="nav-text">1. OTP</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1-OTP的认证原理"><span class="nav-number">1.1.</span> <span class="nav-text">1.1 OTP的认证原理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3-OTP的实现方式"><span class="nav-number">1.2.</span> <span class="nav-text">1.3 OTP的实现方式</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-HOTP"><span class="nav-number">2.</span> <span class="nav-text">2. HOTP</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-HOTP的工作原理"><span class="nav-number">2.1.</span> <span class="nav-text">2.1 HOTP的工作原理</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-TOTP"><span class="nav-number">3.</span> <span class="nav-text">3 TOTP</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-1-TOTP的工作原理"><span class="nav-number">3.1.</span> <span class="nav-text">3.1 TOTP的工作原理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-TOTP的要求"><span class="nav-number">3.2.</span> <span class="nav-text">3.2 TOTP的要求</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-安全性考虑"><span class="nav-number">3.3.</span> <span class="nav-text">3.3 安全性考虑</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-1-安全性分析"><span class="nav-number">3.3.1.</span> <span class="nav-text">3.3.1 安全性分析</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-2-时延兼容"><span class="nav-number">3.3.2.</span> <span class="nav-text">3.3.2 时延兼容</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-3-步长设置"><span class="nav-number">3.3.3.</span> <span class="nav-text">3.3.3 步长设置</span></a></li></ol></li></ol></li></ol></div>
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#方式1"><span class="nav-number">1.</span> <span class="nav-text">方式1</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#方式2"><span class="nav-number">2.</span> <span class="nav-text">方式2</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#总结"><span class="nav-number">3.</span> <span class="nav-text">总结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#参考资料："><span class="nav-number">4.</span> <span class="nav-text">参考资料：</span></a></li></ol></div>
             
 
           </div>
