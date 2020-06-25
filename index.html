@@ -260,6 +260,246 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/lock/OCC/OCC-overview/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/lock/OCC/OCC-overview/" itemprop="url">关于乐观锁的探索</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-06-16T16:41:56+08:00">
+                2020-06-16
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/lock/" itemprop="url" rel="index">
+                    <span itemprop="name">lock</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/lock/OCC/" itemprop="url" rel="index">
+                    <span itemprop="name">OCC</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <blockquote>
+<p><strong>乐观并发控制</strong>（又名“<strong>乐观锁</strong>”，Optimistic Concurrency Control，缩写“OCC”）</p>
+</blockquote>
+<h2 id="为什么要使用锁"><a href="#为什么要使用锁" class="headerlink" title="为什么要使用锁"></a>为什么要使用锁</h2><p>在多线程编程领域，基本上所有的编程模型都采用了“<strong>并发访问串行处理</strong>”的策略，而方法就是给临界资源加一把锁</p>
+<h2 id="并发控制策略-：乐观锁、悲观锁"><a href="#并发控制策略-：乐观锁、悲观锁" class="headerlink" title="并发控制策略 ：乐观锁、悲观锁"></a>并发控制策略 ：乐观锁、悲观锁</h2><p>锁的一种宏观分类方式是<strong>悲观锁</strong>和<strong>乐观锁</strong>。悲观锁与乐观锁<strong>并不是特指某个锁</strong>，而是在并发情况下的两种不同策略。</p>
+<ul>
+<li>悲观锁(Pessimistic Lock) : 就是很悲观，每次去拿数据的时候都认为别人会修改。所以<strong>每次在拿数据的时候都会上锁</strong>。这样别人想拿数据就被挡住，直到悲观锁被释放。</li>
+<li>乐观锁(Optimistic Lock) : 就是很乐观，每次去拿数据的时候都认为别人不会修改。所以不会上锁，<strong>更新前检查在读取至更新这段时间别人有没有修改过这个数据</strong>。如果修改过，则重新读取，再次尝试更新，循环上述步骤直到更新成功（当然也允许更新失败的线程放弃操作）。</li>
+</ul>
+<p>缺点：悲观锁阻塞事务，乐观锁回滚重试。</p>
+<h3 id="悲观锁的代价"><a href="#悲观锁的代价" class="headerlink" title="悲观锁的代价"></a>悲观锁的代价</h3><p>日常用到的加锁基本都是悲观锁。悲观锁是用来做并发最简单的方式，其代价也是最高的：</p>
+<ul>
+<li>加锁、释放锁会需要操作系统进行上下文切换和调度延时，在上下文切换的时候，cpu之前缓存的指令和数据都将失效，这个过程将增加系统开销。</li>
+<li>多个线程同时竞争锁，锁竞争机制本身需要消耗系统资源。没有获取到锁的线程会被挂起直至获取锁，在线程被挂起和恢复执行的过程中也存在很大开销。</li>
+<li>等待锁的线程会阻塞，影响实际的使用体验。如果被阻塞的线程优先级高，而持有锁的线程优先级低，将会导致优先级反转(Priority Inversion)。</li>
+</ul>
+<h3 id="乐观锁、悲观锁的选择"><a href="#乐观锁、悲观锁的选择" class="headerlink" title="乐观锁、悲观锁的选择"></a>乐观锁、悲观锁的选择</h3><p>适用场景考虑几个因素：</p>
+<ol>
+<li>响应速度：需要响应速度快使用乐观锁</li>
+<li>冲突频率：<ol>
+<li>对于资源竞争较少（多读场景、线程冲突较轻）的情况选择<strong>乐观锁</strong> ：使用悲观锁进行线程阻塞和唤醒切换以及用户态内核态间的切换操作额外浪费消耗cpu资源；而乐观锁操作自旋几率较少，因此可以获得更高的性能。</li>
+<li>对于资源竞争严重（多写场景，线程冲突严重）的场景选择<strong>悲观锁</strong> ：乐观锁自旋的概率会比较大，从而浪费更多的CPU资源，效率低于悲观锁。</li>
+</ol>
+</li>
+<li>重试代价：代价高则用悲观锁</li>
+</ol>
+<h2 id="乐观锁实现"><a href="#乐观锁实现" class="headerlink" title="乐观锁实现"></a>乐观锁实现</h2><p>乐观锁允许多个线程同时读取（因为根本没有加锁操作），但是只有一个线程可以成功更新数据，并导致其他要更新数据的线程回滚重试。因为整个过程中并没有“加锁”和“解锁”操作，因此乐观锁策略也被称为<strong>无锁编程</strong>。</p>
+<p>换句话说，乐观锁其实不是“锁”，它仅仅是一个循环重试CAS的算法而已！（下文描述的版本号机制也是基于 MySQL 中提供了一个原子操作，这个原子操作最终也可能是一个CAS或者悲观锁）</p>
+<h3 id="CAS"><a href="#CAS" class="headerlink" title="CAS"></a>CAS</h3><p>即<strong>compare and swap（比较与交换）</strong>，是一种有名的<strong>无锁算法</strong>。无锁编程，即不使用锁的情况下实现多线程之间的变量同步，也就是在没有线程被阻塞的情况下实现变量的同步，所以也叫非阻塞同步（Non-blocking Synchronization）。</p>
+<p><strong>CAS算法</strong>涉及到三个操作数</p>
+<ul>
+<li>需要读写的内存值 V</li>
+<li>进行比较的值 A</li>
+<li>拟写入的新值 B</li>
+</ul>
+<p>当且仅当 V 的值等于 A时，CAS通过原子方式用新值B来更新V的值，否则不会执行任何操作（比较和替换是一个原子操作）。一般情况下是一个<strong>自旋操作</strong>，即<strong>不断的重试</strong>。</p>
+<p><strong>CAS利用CPU指令，从硬件层面保证了操作的原子性，以达到类似于锁的效果。</strong></p>
+<h4 id="CAS-带来的问题"><a href="#CAS-带来的问题" class="headerlink" title="CAS 带来的问题"></a>CAS 带来的问题</h4><ol>
+<li><code>ABA</code>问题：比如说一个线程<code>T1</code>从内存位置<code>V</code>中取出<code>A</code>，这时候另一个线程<code>T2</code>也从内存中取出<code>A</code>，并且<code>T2</code>进行了一些操作变成了<code>B</code>，然后<code>T2</code>又将<code>V</code>位置的数据变成<code>A</code>，这时候线程<code>T1</code>进行<code>CAS</code>操作发现内存中仍然是<code>A</code>，然后<code>T1</code>操作成功。尽管线程<code>T1</code>的<code>CAS</code>操作成功，但可能存在潜藏的问题。</li>
+<li>循环时间长开销大：自旋<code>CAS</code>（不成功，就一直循环执行，直到成功）如果长时间不成功，会给CPU带来非常大的执行开销。</li>
+<li>只能保证一个共享变量的原子操作：当对一个共享变量执行操作时，我们可以使用循环CAS的方式来保证原子操作，但是对多个共享变量操作时，循环CAS就无法保证操作的原子性，这个时候就可以用锁，或者有一个取巧的办法，就是把多个共享变量合并成一个共享变量来操作。</li>
+</ol>
+<h3 id="版本号机制"><a href="#版本号机制" class="headerlink" title="版本号机制"></a>版本号机制</h3><p>一般是在数据表中加上一个数据版本号version字段，表示数据被修改的次数，当数据被修改时，version值会加一。当线程A要更新数据值时，在读取数据的同时也会读取version值，在提交更新时，若刚才读取到的version值为当前数据库中的version值相等时才更新，否则重试更新操作，直到更新成功。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">update table set name &#x3D; &#39;XXX&#39;, version &#x3D; version + 1 where id &#x3D; #&#123;id&#125; and version &#x3D; #&#123;version&#125;;</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="MVCC-：-Multi-Version-Concurrency-Control-即多版本并发控制"><a href="#MVCC-：-Multi-Version-Concurrency-Control-即多版本并发控制" class="headerlink" title="MVCC ： Multi-Version Concurrency Control, 即多版本并发控制"></a>MVCC ： Multi-Version Concurrency Control, 即<strong>多版本并发控制</strong></h3><p>MVCC 是实现乐观锁的一种方案，用空间（多版本）以及回滚成本（冲突），保证可重复读且没有幻读（读小于自己事务ID的版本）避免（或减少）加锁。</p>
+<h3 id="整体思路"><a href="#整体思路" class="headerlink" title="整体思路"></a>整体思路</h3><ol>
+<li><strong>多版本并发控制</strong>（MVCC），来实现 MySQL 上的<code>多事务``并发访问</code>时，隔离级别控制；</li>
+<li><strong>数据版本</strong>：并发事务执行时，同一行数据有多个版本</li>
+<li><strong>事务版本</strong>：每个事务都有一个事务版本</li>
+<li>版本有序 ：版本是通过<code>时间</code>来标识的<ul>
+<li><strong>数据版本</strong>：包含<code>创建版本</code>（创建时间）、<code>删除版本</code>（删除时间）</li>
+<li><strong>事务版本</strong>：事务的<code>创建时间</code>，作为<code>事务版本</code></li>
+<li>Note：<strong>数据版本</strong>，并不包含<code>更新版本</code>（更新时间），因为，在多事务并发情况下，更新操作，实际是：<code>删除原数据</code> + <code>新增新数据</code></li>
+</ul>
+</li>
+</ol>
+<p><img src="https://wangxin201492.github.io/techImages/mvcc-version-relation.png" alt="mvcc-version-relation.png"></p>
+<h3 id="MVCC-本质"><a href="#MVCC-本质" class="headerlink" title="MVCC 本质"></a>MVCC 本质</h3><ol>
+<li>本质使用了<code>copy-on-write</code>（写时复制），为每个数据保留多份 snapshot</li>
+<li>不同 snapshot 之间，使用<code>指针</code>连接成<code>链表</code>；</li>
+<li>创建事务，能看到的 snapshot 是受限的，是链表上，<code>小于等于</code>当前事务版本的<code>最大版本</code>（读取已提交：离当前事务<code>最近</code>的<code>已提交</code>版本）</li>
+<li><code>update</code> 操作，创建一个新的 snapshot，并使用事务版本，作为创建版本；</li>
+</ol>
+<p><img src="https://wangxin201492.github.io/techImages/mvcc-snapshot-list.png" alt="mvcc-snapshot-list.png"></p>
+<h3 id="MVCC-历史数据清理"><a href="#MVCC-历史数据清理" class="headerlink" title="MVCC 历史数据清理"></a>MVCC 历史数据清理</h3><p>// TODO</p>
+<h3 id="MVCC在事务中使用"><a href="#MVCC在事务中使用" class="headerlink" title="MVCC在事务中使用"></a>MVCC在事务中使用</h3><p>MVCC手段只适用于Msyql隔离级别中的读已提交（Read committed）和可重复读（Repeatable Read）</p>
+<ol>
+<li>Read uncimmitted由于存在脏读，即能读到未提交事务的数据行，所以不适用MVCC。原因是MVCC的创建版本和删除版本只要在事务提交后才会产生。</li>
+<li>串行化由于是会对所涉及到的表加锁，并非行锁，自然也就不存在行的版本控制问题。</li>
+</ol>
+<p>通过以上总结，可知，MVCC主要作用于事务性的，有行锁控制的数据库模型。</p>
+<p>RR 和 RC 隔离级别生成 ReadView 时间不同</p>
+<ol>
+<li>在 <code>RR</code> 隔离级别下，每个事务 <code>touch first read</code> 时（本质上就是执行第一个 <code>SELECT</code> 语句时，后续所有的 <code>SELECT</code> 都是复用这个 <code>ReadView</code> ，其它 <code>update</code> , <code>delete</code> , <code>insert</code> 语句和一致性读 <code>snapshot</code> 的建立没有关系），会将当前系统中的所有的活跃事务拷贝到一个列表生成 <code>ReadView</code> 。</li>
+<li>在 <code>RC</code> 隔离级别下，每个 <code>SELECT</code> 语句开始时，都会重新将当前系统中的所有的活跃事务拷贝到一个列表生成 <code>ReadView</code> 。</li>
+</ol>
+<p>二者的区别就在于生成 <code>ReadView</code> 的时间点不同，一个是事务之后第一个 <code>SELECT</code> 语句开始、一个是事务中每条 <code>SELECT</code> 语句开始。</p>
+<h3 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h3><ul>
+<li><a href="https://zhuanlan.zhihu.com/p/71156910" target="_blank" rel="noopener">https://zhuanlan.zhihu.com/p/71156910</a></li>
+<li><a href="https://segmentfault.com/a/1190000016611415" target="_blank" rel="noopener">https://segmentfault.com/a/1190000016611415</a></li>
+<li><a href="https://juejin.im/post/5b4977ae5188251b146b2fc8" target="_blank" rel="noopener">https://juejin.im/post/5b4977ae5188251b146b2fc8</a></li>
+<li><a href="https://segmentfault.com/a/1190000015239603" target="_blank" rel="noopener">https://segmentfault.com/a/1190000015239603</a></li>
+<li><a href="http://ningg.top/inside-mysql-transaction-and-mvcc/" target="_blank" rel="noopener">http://ningg.top/inside-mysql-transaction-and-mvcc/</a></li>
+<li><a href="https://www.codercto.com/a/88775.html" target="_blank" rel="noopener">https://www.codercto.com/a/88775.html</a></li>
+</ul>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/linux/linux-subsys-IO/linux-io-overview/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -917,7 +1157,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">2</span>
+                  <span class="site-state-item-count">3</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -928,7 +1168,7 @@
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">4</span>
+                  <span class="site-state-item-count">6</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
@@ -939,7 +1179,7 @@
               
               <div class="site-state-item site-state-tags">
                 <a href="/tags/index.html">
-                  <span class="site-state-item-count">4</span>
+                  <span class="site-state-item-count">6</span>
                   <span class="site-state-item-name">标签</span>
                 </a>
               </div>
