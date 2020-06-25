@@ -68,7 +68,7 @@
 
 
 
-  <meta name="keywords" content="Hexo, NexT" />
+  <meta name="keywords" content="linux,linux_subsys_IO," />
 
 
 
@@ -79,13 +79,13 @@
 
 
 
-<meta name="description" content="Linux IO子系统Date: 2020.02.20 用于IO读写的函数应用程序通过read&#x2F;write&#x2F;sync函数和底层交互进行读写。读写过程依次会经历stdio buffer&#x2F;kernel buffer&#x2F;disk。大致流程见下图【图1】：read用于数据读取，write用于数据写入，这两个行为默认情况下(bufferedIO)都是写入kernel buffer中，而sync则是将数据从ke">
+<meta name="description" content="用于IO读写的函数应用程序通过read&#x2F;write&#x2F;sync函数和底层交互进行读写。读写过程依次会经历stdio buffer&#x2F;kernel buffer&#x2F;disk。大致流程见下图【图1】：read用于数据读取，write用于数据写入，这两个行为默认情况下(bufferedIO)都是写入kernel buffer中，而sync则是将数据从kernel buffer刷入disk read&#x2F;write">
 <meta property="og:type" content="article">
-<meta property="og:title" content="linux-io-overview">
-<meta property="og:url" content="https://wangxin201492.github.io/uncategorized/linux-io-overview/index.html">
+<meta property="og:title" content="Linux IO子系统">
+<meta property="og:url" content="https://wangxin201492.github.io/linux/linux-subsys-IO/linux-io-overview/index.html">
 <meta property="og:site_name" content="wangxin201492">
-<meta property="og:description" content="Linux IO子系统Date: 2020.02.20 用于IO读写的函数应用程序通过read&#x2F;write&#x2F;sync函数和底层交互进行读写。读写过程依次会经历stdio buffer&#x2F;kernel buffer&#x2F;disk。大致流程见下图【图1】：read用于数据读取，write用于数据写入，这两个行为默认情况下(bufferedIO)都是写入kernel buffer中，而sync则是将数据从ke">
-<meta property="og:image" content="https://wangxin201492.github.io/techImages/linux-io-buffers-3072497.png">
+<meta property="og:description" content="用于IO读写的函数应用程序通过read&#x2F;write&#x2F;sync函数和底层交互进行读写。读写过程依次会经历stdio buffer&#x2F;kernel buffer&#x2F;disk。大致流程见下图【图1】：read用于数据读取，write用于数据写入，这两个行为默认情况下(bufferedIO)都是写入kernel buffer中，而sync则是将数据从kernel buffer刷入disk read&#x2F;write">
+<meta property="og:image" content="https://wangxin201492.github.io/techImages/linux-io-buffers.png">
 <meta property="og:image" content="https://wangxin201492.github.io/techImages/linux-io-function-read-write-sync.png">
 <meta property="og:image" content="https://wangxin201492.github.io/techImages/linux-io-stack-overview.png">
 <meta property="og:image" content="https://wangxin201492.github.io/techImages/linux-io-stack-overview-detail.png">
@@ -95,10 +95,12 @@
 <meta property="og:image" content="https://wangxin201492.github.io/techImages/linux-io-size-effect-iops.png">
 <meta property="og:image" content="https://wangxin201492.github.io/techImages/linux-io-utils.png">
 <meta property="article:published_time" content="2020-02-20T08:00:27.000Z">
-<meta property="article:modified_time" content="2020-06-25T08:18:37.624Z">
+<meta property="article:modified_time" content="2020-06-25T08:36:18.366Z">
 <meta property="article:author" content="wangxin201492">
+<meta property="article:tag" content="linux">
+<meta property="article:tag" content="linux_subsys_IO">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://wangxin201492.github.io/techImages/linux-io-buffers-3072497.png">
+<meta name="twitter:image" content="https://wangxin201492.github.io/techImages/linux-io-buffers.png">
 
 
 
@@ -128,13 +130,13 @@
 
 
 
-  <link rel="canonical" href="https://wangxin201492.github.io/uncategorized/linux-io-overview/"/>
+  <link rel="canonical" href="https://wangxin201492.github.io/linux/linux-subsys-IO/linux-io-overview/"/>
 
 
 
 
 
-  <title>linux-io-overview | wangxin201492</title>
+  <title>Linux IO子系统 | wangxin201492</title>
   
 
 
@@ -271,7 +273,7 @@
   
   
   <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/uncategorized/linux-io-overview/">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/linux/linux-subsys-IO/linux-io-overview/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="name" content="wangxin201492">
@@ -288,7 +290,7 @@
 
         
         
-          <h1 class="post-title" itemprop="name headline">linux-io-overview</h1>
+          <h1 class="post-title" itemprop="name headline">Linux IO子系统</h1>
         
 
         <div class="post-meta">
@@ -310,6 +312,39 @@
             
           </span>
 
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/linux/" itemprop="url" rel="index">
+                    <span itemprop="name">linux</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/linux/linux-subsys-IO/" itemprop="url" rel="index">
+                    <span itemprop="name">linux_subsys_IO</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
           
 
           
@@ -338,8 +373,7 @@
       
 
       
-        <h1 id="Linux-IO子系统"><a href="#Linux-IO子系统" class="headerlink" title="Linux IO子系统"></a>Linux IO子系统</h1><p>Date: 2020.02.20</p>
-<h2 id="用于IO读写的函数"><a href="#用于IO读写的函数" class="headerlink" title="用于IO读写的函数"></a>用于IO读写的函数</h2><p>应用程序通过<code>read</code>/<code>write</code>/<code>sync</code>函数和底层交互进行读写。读写过程依次会经历<code>stdio buffer</code>/<code>kernel buffer</code>/<code>disk</code>。大致流程见下图【图1】：<br><img src="https://wangxin201492.github.io/techImages/linux-io-buffers-3072497.png" alt="linux-io-buffers.png"><br><code>read</code>用于数据读取，<code>write</code>用于数据写入，这两个行为默认情况下(<code>bufferedIO</code>)都是写入<code>kernel buffer</code>中，而<code>sync</code>则是将数据从<code>kernel buffer</code>刷入<code>disk</code></p>
+        <h2 id="用于IO读写的函数"><a href="#用于IO读写的函数" class="headerlink" title="用于IO读写的函数"></a>用于IO读写的函数</h2><p>应用程序通过<code>read</code>/<code>write</code>/<code>sync</code>函数和底层交互进行读写。读写过程依次会经历<code>stdio buffer</code>/<code>kernel buffer</code>/<code>disk</code>。大致流程见下图【图1】：<br><img src="https://wangxin201492.github.io/techImages/linux-io-buffers.png" alt="linux-io-buffers.png"><br><code>read</code>用于数据读取，<code>write</code>用于数据写入，这两个行为默认情况下(<code>bufferedIO</code>)都是写入<code>kernel buffer</code>中，而<code>sync</code>则是将数据从<code>kernel buffer</code>刷入<code>disk</code></p>
 <h4 id="read-write-sync相关的函数区分"><a href="#read-write-sync相关的函数区分" class="headerlink" title="read/write/sync相关的函数区分"></a><code>read</code>/<code>write</code>/<code>sync</code>相关的函数区分</h4><p><img src="https://wangxin201492.github.io/techImages/linux-io-function-read-write-sync.png" alt="linux-io-function-read-write-sync.png"><br>上图【图2】描述的比较清楚</p>
 <ul>
 <li><code>fread</code>/<code>fwrite</code>是stdio提供的方法，数据仅和<code>stdio buffer</code> 交互</li>
@@ -656,6 +690,14 @@
 
     <footer class="post-footer">
       
+        <div class="post-tags">
+          
+            <a href="/tags/linux/" rel="tag"># linux</a>
+          
+            <a href="/tags/linux-subsys-IO/" rel="tag"># linux_subsys_IO</a>
+          
+        </div>
+      
 
       
       
@@ -761,7 +803,7 @@
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">2</span>
+                  <span class="site-state-item-count">4</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
@@ -772,7 +814,7 @@
               
               <div class="site-state-item site-state-tags">
                 <a href="/tags/index.html">
-                  <span class="site-state-item-count">2</span>
+                  <span class="site-state-item-count">4</span>
                   <span class="site-state-item-name">标签</span>
                 </a>
               </div>
@@ -821,7 +863,7 @@
             
 
             
-              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#Linux-IO子系统"><span class="nav-number">1.</span> <span class="nav-text">Linux IO子系统</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#用于IO读写的函数"><span class="nav-number">1.1.</span> <span class="nav-text">用于IO读写的函数</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#read-write-sync相关的函数区分"><span class="nav-number">1.1.0.1.</span> <span class="nav-text">read&#x2F;write&#x2F;sync相关的函数区分</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#一次完整的读取流程简述"><span class="nav-number">1.1.1.</span> <span class="nav-text">一次完整的读取流程简述</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#IO读写的一些重要特性"><span class="nav-number">1.2.</span> <span class="nav-text">IO读写的一些重要特性</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#IO类型"><span class="nav-number">1.2.1.</span> <span class="nav-text">IO类型</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#根据是否利用标准库缓存，可以把文件I-O分为缓冲I-O与非缓冲I-O"><span class="nav-number">1.2.1.1.</span> <span class="nav-text">根据是否利用标准库缓存，可以把文件I&#x2F;O分为缓冲I&#x2F;O与非缓冲I&#x2F;O</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#根据是否利用操作系统的页缓存，可以把文件I-O分为直接I-O和非直接I-O"><span class="nav-number">1.2.1.2.</span> <span class="nav-text">根据是否利用操作系统的页缓存，可以把文件I&#x2F;O分为直接I&#x2F;O和非直接I&#x2F;O</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#根据应用程序是否阻塞自身运行，可以把文件I-O分为阻塞I-O和非阻塞I-O"><span class="nav-number">1.2.1.3.</span> <span class="nav-text">根据应用程序是否阻塞自身运行，可以把文件I&#x2F;O分为阻塞I&#x2F;O和非阻塞I&#x2F;O</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#是指应用程序执行I-O操作后，如果没有获得响应，就会阻塞当前线程，自然不能执行其他任务"><span class="nav-number">1.2.1.4.</span> <span class="nav-text">是指应用程序执行I&#x2F;O操作后，如果没有获得响应，就会阻塞当前线程，自然不能执行其他任务</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#根据是否等待响应结果，可以把文件I-O分为同步和异步I-O"><span class="nav-number">1.2.1.5.</span> <span class="nav-text">根据是否等待响应结果，可以把文件I&#x2F;O分为同步和异步I&#x2F;O</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#顺序访问-Sequential-Access-amp-随机访问-Random-Access"><span class="nav-number">1.2.1.6.</span> <span class="nav-text">顺序访问(Sequential Access)&amp;随机访问(Random Access)</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#磁盘预读-read-ahead"><span class="nav-number">1.2.2.</span> <span class="nav-text">磁盘预读(read ahead)</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#write-back、write-through、page-cache"><span class="nav-number">1.2.3.</span> <span class="nav-text">write back、write through、page cache</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#读写过程中的数据拷贝（zero-copy）"><span class="nav-number">1.2.4.</span> <span class="nav-text">读写过程中的数据拷贝（zero-copy）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#顺序IO模式-Queue-Mode-并发IO模式-Burst-Mode"><span class="nav-number">1.2.5.</span> <span class="nav-text">顺序IO模式(Queue Mode)&#x2F;并发IO模式(Burst Mode)</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#缺页中断（Page-Fault）"><span class="nav-number">1.2.6.</span> <span class="nav-text">缺页中断（Page Fault）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#经验总结"><span class="nav-number">1.2.7.</span> <span class="nav-text">经验总结</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#相关阅读"><span class="nav-number">1.2.8.</span> <span class="nav-text">相关阅读</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#IO栈及各层功能"><span class="nav-number">2.</span> <span class="nav-text">IO栈及各层功能</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#文件系统层"><span class="nav-number">2.1.</span> <span class="nav-text">文件系统层</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#缺页中断-–-page-fault"><span class="nav-number">2.1.1.</span> <span class="nav-text">缺页中断 – page fault</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#磁盘预读-–-read-ahead"><span class="nav-number">2.1.2.</span> <span class="nav-text">磁盘预读 – read ahead</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#顺序性检测"><span class="nav-number">2.1.2.1.</span> <span class="nav-text">顺序性检测</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#预读的大小"><span class="nav-number">2.1.2.2.</span> <span class="nav-text">预读的大小</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#page-cache"><span class="nav-number">2.1.3.</span> <span class="nav-text">page cache</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Write-Through（写穿）和Write-back（写回）-–-page-cache同步"><span class="nav-number">2.1.4.</span> <span class="nav-text">Write Through（写穿）和Write back（写回） – page cache同步</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#文件系统与inode"><span class="nav-number">2.1.5.</span> <span class="nav-text">文件系统与inode</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#文件系统磁盘布局"><span class="nav-number">2.1.6.</span> <span class="nav-text">文件系统磁盘布局</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#日志文件系统和非日志文件系统"><span class="nav-number">2.1.7.</span> <span class="nav-text">日志文件系统和非日志文件系统</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#相关阅读-1"><span class="nav-number">2.1.8.</span> <span class="nav-text">相关阅读</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Block层"><span class="nav-number">2.2.</span> <span class="nav-text">Block层</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#block-IO"><span class="nav-number">2.2.1.</span> <span class="nav-text">block IO</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#device-mapper层"><span class="nav-number">2.2.2.</span> <span class="nav-text">device mapper层</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#device层"><span class="nav-number">2.3.</span> <span class="nav-text">device层</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#机械磁盘基本结构"><span class="nav-number">2.3.1.</span> <span class="nav-text">机械磁盘基本结构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#固态硬盘"><span class="nav-number">2.3.2.</span> <span class="nav-text">固态硬盘</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#机械硬盘-amp-固态硬盘"><span class="nav-number">2.3.2.1.</span> <span class="nav-text">机械硬盘&amp;固态硬盘</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#磁盘读取数据花费的时间"><span class="nav-number">2.3.3.</span> <span class="nav-text">磁盘读取数据花费的时间</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#寻道时间"><span class="nav-number">2.3.3.1.</span> <span class="nav-text">寻道时间</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#旋转延迟"><span class="nav-number">2.3.3.2.</span> <span class="nav-text">旋转延迟</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#数据传输时间"><span class="nav-number">2.3.3.3.</span> <span class="nav-text">数据传输时间</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#基本单位"><span class="nav-number">2.3.4.</span> <span class="nav-text">基本单位</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#块（block）"><span class="nav-number">2.3.4.1.</span> <span class="nav-text">块（block）</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#page"><span class="nav-number">2.3.4.2.</span> <span class="nav-text">page</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#扇区、块-簇、page的关系"><span class="nav-number">2.3.4.3.</span> <span class="nav-text">扇区、块&#x2F;簇、page的关系</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#磁盘类型一些名词区分"><span class="nav-number">2.3.5.</span> <span class="nav-text">磁盘类型一些名词区分</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#尺寸外形"><span class="nav-number">2.3.5.1.</span> <span class="nav-text">尺寸外形</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#接口"><span class="nav-number">2.3.5.2.</span> <span class="nav-text">接口</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#协议"><span class="nav-number">2.3.5.3.</span> <span class="nav-text">协议</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#为什么NVMe会这么快"><span class="nav-number">2.3.5.4.</span> <span class="nav-text">为什么NVMe会这么快</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#IOPS"><span class="nav-number">2.3.6.</span> <span class="nav-text">IOPS</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#IOPS计算方法"><span class="nav-number">2.3.6.1.</span> <span class="nav-text">IOPS计算方法</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#传输速度-Transfer-Rate-吞吐率-Throughput"><span class="nav-number">2.3.7.</span> <span class="nav-text">传输速度(Transfer Rate)&#x2F;吞吐率(Throughput)</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#相关阅读-2"><span class="nav-number">2.4.</span> <span class="nav-text">相关阅读</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#内核代码分析"><span class="nav-number">2.4.1.</span> <span class="nav-text">内核代码分析</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#IO监控工具"><span class="nav-number">2.5.</span> <span class="nav-text">IO监控工具</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#iostat"><span class="nav-number">2.5.1.</span> <span class="nav-text">iostat</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#iotop"><span class="nav-number">2.5.2.</span> <span class="nav-text">iotop</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#pidstat"><span class="nav-number">2.5.3.</span> <span class="nav-text">pidstat</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#block-dump-iodump"><span class="nav-number">2.5.4.</span> <span class="nav-text">block_dump, iodump</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#ioprofile"><span class="nav-number">2.5.5.</span> <span class="nav-text">ioprofile</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#相关阅读-3"><span class="nav-number">2.5.6.</span> <span class="nav-text">相关阅读</span></a></li></ol></li></ol></li></ol></div>
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#用于IO读写的函数"><span class="nav-number">1.</span> <span class="nav-text">用于IO读写的函数</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#read-write-sync相关的函数区分"><span class="nav-number">1.0.1.</span> <span class="nav-text">read&#x2F;write&#x2F;sync相关的函数区分</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#一次完整的读取流程简述"><span class="nav-number">1.1.</span> <span class="nav-text">一次完整的读取流程简述</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#IO读写的一些重要特性"><span class="nav-number">2.</span> <span class="nav-text">IO读写的一些重要特性</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#IO类型"><span class="nav-number">2.1.</span> <span class="nav-text">IO类型</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#根据是否利用标准库缓存，可以把文件I-O分为缓冲I-O与非缓冲I-O"><span class="nav-number">2.1.1.</span> <span class="nav-text">根据是否利用标准库缓存，可以把文件I&#x2F;O分为缓冲I&#x2F;O与非缓冲I&#x2F;O</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#根据是否利用操作系统的页缓存，可以把文件I-O分为直接I-O和非直接I-O"><span class="nav-number">2.1.2.</span> <span class="nav-text">根据是否利用操作系统的页缓存，可以把文件I&#x2F;O分为直接I&#x2F;O和非直接I&#x2F;O</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#根据应用程序是否阻塞自身运行，可以把文件I-O分为阻塞I-O和非阻塞I-O"><span class="nav-number">2.1.3.</span> <span class="nav-text">根据应用程序是否阻塞自身运行，可以把文件I&#x2F;O分为阻塞I&#x2F;O和非阻塞I&#x2F;O</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#是指应用程序执行I-O操作后，如果没有获得响应，就会阻塞当前线程，自然不能执行其他任务"><span class="nav-number">2.1.4.</span> <span class="nav-text">是指应用程序执行I&#x2F;O操作后，如果没有获得响应，就会阻塞当前线程，自然不能执行其他任务</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#根据是否等待响应结果，可以把文件I-O分为同步和异步I-O"><span class="nav-number">2.1.5.</span> <span class="nav-text">根据是否等待响应结果，可以把文件I&#x2F;O分为同步和异步I&#x2F;O</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#顺序访问-Sequential-Access-amp-随机访问-Random-Access"><span class="nav-number">2.1.6.</span> <span class="nav-text">顺序访问(Sequential Access)&amp;随机访问(Random Access)</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#磁盘预读-read-ahead"><span class="nav-number">2.2.</span> <span class="nav-text">磁盘预读(read ahead)</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#write-back、write-through、page-cache"><span class="nav-number">2.3.</span> <span class="nav-text">write back、write through、page cache</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#读写过程中的数据拷贝（zero-copy）"><span class="nav-number">2.4.</span> <span class="nav-text">读写过程中的数据拷贝（zero-copy）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#顺序IO模式-Queue-Mode-并发IO模式-Burst-Mode"><span class="nav-number">2.5.</span> <span class="nav-text">顺序IO模式(Queue Mode)&#x2F;并发IO模式(Burst Mode)</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#缺页中断（Page-Fault）"><span class="nav-number">2.6.</span> <span class="nav-text">缺页中断（Page Fault）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#经验总结"><span class="nav-number">2.7.</span> <span class="nav-text">经验总结</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#相关阅读"><span class="nav-number">2.8.</span> <span class="nav-text">相关阅读</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#IO栈及各层功能"><span class="nav-number"></span> <span class="nav-text">IO栈及各层功能</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#文件系统层"><span class="nav-number">1.</span> <span class="nav-text">文件系统层</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#缺页中断-–-page-fault"><span class="nav-number">1.1.</span> <span class="nav-text">缺页中断 – page fault</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#磁盘预读-–-read-ahead"><span class="nav-number">1.2.</span> <span class="nav-text">磁盘预读 – read ahead</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#顺序性检测"><span class="nav-number">1.2.1.</span> <span class="nav-text">顺序性检测</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#预读的大小"><span class="nav-number">1.2.2.</span> <span class="nav-text">预读的大小</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#page-cache"><span class="nav-number">1.3.</span> <span class="nav-text">page cache</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Write-Through（写穿）和Write-back（写回）-–-page-cache同步"><span class="nav-number">1.4.</span> <span class="nav-text">Write Through（写穿）和Write back（写回） – page cache同步</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#文件系统与inode"><span class="nav-number">1.5.</span> <span class="nav-text">文件系统与inode</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#文件系统磁盘布局"><span class="nav-number">1.6.</span> <span class="nav-text">文件系统磁盘布局</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#日志文件系统和非日志文件系统"><span class="nav-number">1.7.</span> <span class="nav-text">日志文件系统和非日志文件系统</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#相关阅读-1"><span class="nav-number">1.8.</span> <span class="nav-text">相关阅读</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Block层"><span class="nav-number">2.</span> <span class="nav-text">Block层</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#block-IO"><span class="nav-number">2.1.</span> <span class="nav-text">block IO</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#device-mapper层"><span class="nav-number">2.2.</span> <span class="nav-text">device mapper层</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#device层"><span class="nav-number">3.</span> <span class="nav-text">device层</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#机械磁盘基本结构"><span class="nav-number">3.1.</span> <span class="nav-text">机械磁盘基本结构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#固态硬盘"><span class="nav-number">3.2.</span> <span class="nav-text">固态硬盘</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#机械硬盘-amp-固态硬盘"><span class="nav-number">3.2.1.</span> <span class="nav-text">机械硬盘&amp;固态硬盘</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#磁盘读取数据花费的时间"><span class="nav-number">3.3.</span> <span class="nav-text">磁盘读取数据花费的时间</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#寻道时间"><span class="nav-number">3.3.1.</span> <span class="nav-text">寻道时间</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#旋转延迟"><span class="nav-number">3.3.2.</span> <span class="nav-text">旋转延迟</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#数据传输时间"><span class="nav-number">3.3.3.</span> <span class="nav-text">数据传输时间</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#基本单位"><span class="nav-number">3.4.</span> <span class="nav-text">基本单位</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#块（block）"><span class="nav-number">3.4.1.</span> <span class="nav-text">块（block）</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#page"><span class="nav-number">3.4.2.</span> <span class="nav-text">page</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#扇区、块-簇、page的关系"><span class="nav-number">3.4.3.</span> <span class="nav-text">扇区、块&#x2F;簇、page的关系</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#磁盘类型一些名词区分"><span class="nav-number">3.5.</span> <span class="nav-text">磁盘类型一些名词区分</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#尺寸外形"><span class="nav-number">3.5.1.</span> <span class="nav-text">尺寸外形</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#接口"><span class="nav-number">3.5.2.</span> <span class="nav-text">接口</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#协议"><span class="nav-number">3.5.3.</span> <span class="nav-text">协议</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#为什么NVMe会这么快"><span class="nav-number">3.5.4.</span> <span class="nav-text">为什么NVMe会这么快</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#IOPS"><span class="nav-number">3.6.</span> <span class="nav-text">IOPS</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#IOPS计算方法"><span class="nav-number">3.6.1.</span> <span class="nav-text">IOPS计算方法</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#传输速度-Transfer-Rate-吞吐率-Throughput"><span class="nav-number">3.7.</span> <span class="nav-text">传输速度(Transfer Rate)&#x2F;吞吐率(Throughput)</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#相关阅读-2"><span class="nav-number">4.</span> <span class="nav-text">相关阅读</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#内核代码分析"><span class="nav-number">4.1.</span> <span class="nav-text">内核代码分析</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#IO监控工具"><span class="nav-number">5.</span> <span class="nav-text">IO监控工具</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#iostat"><span class="nav-number">5.1.</span> <span class="nav-text">iostat</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#iotop"><span class="nav-number">5.2.</span> <span class="nav-text">iotop</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#pidstat"><span class="nav-number">5.3.</span> <span class="nav-text">pidstat</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#block-dump-iodump"><span class="nav-number">5.4.</span> <span class="nav-text">block_dump, iodump</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#ioprofile"><span class="nav-number">5.5.</span> <span class="nav-text">ioprofile</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#相关阅读-3"><span class="nav-number">5.6.</span> <span class="nav-text">相关阅读</span></a></li></ol></li></ol></div>
             
 
           </div>

@@ -260,7 +260,7 @@
   
   
   <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/uncategorized/linux-io-overview/">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/linux/linux-subsys-IO/linux-io-overview/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="name" content="wangxin201492">
@@ -279,7 +279,7 @@
         
           <h1 class="post-title" itemprop="name headline">
                 
-                <a class="post-title-link" href="/uncategorized/linux-io-overview/" itemprop="url">linux-io-overview</a></h1>
+                <a class="post-title-link" href="/linux/linux-subsys-IO/linux-io-overview/" itemprop="url">Linux IO子系统</a></h1>
         
 
         <div class="post-meta">
@@ -301,6 +301,39 @@
             
           </span>
 
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/linux/" itemprop="url" rel="index">
+                    <span itemprop="name">linux</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/linux/linux-subsys-IO/" itemprop="url" rel="index">
+                    <span itemprop="name">linux_subsys_IO</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
           
 
           
@@ -331,8 +364,7 @@
       
         
           
-            <h1 id="Linux-IO子系统"><a href="#Linux-IO子系统" class="headerlink" title="Linux IO子系统"></a>Linux IO子系统</h1><p>Date: 2020.02.20</p>
-<h2 id="用于IO读写的函数"><a href="#用于IO读写的函数" class="headerlink" title="用于IO读写的函数"></a>用于IO读写的函数</h2><p>应用程序通过<code>read</code>/<code>write</code>/<code>sync</code>函数和底层交互进行读写。读写过程依次会经历<code>stdio buffer</code>/<code>kernel buffer</code>/<code>disk</code>。大致流程见下图【图1】：<br><img src="https://wangxin201492.github.io/techImages/linux-io-buffers-3072497.png" alt="linux-io-buffers.png"><br><code>read</code>用于数据读取，<code>write</code>用于数据写入，这两个行为默认情况下(<code>bufferedIO</code>)都是写入<code>kernel buffer</code>中，而<code>sync</code>则是将数据从<code>kernel buffer</code>刷入<code>disk</code></p>
+            <h2 id="用于IO读写的函数"><a href="#用于IO读写的函数" class="headerlink" title="用于IO读写的函数"></a>用于IO读写的函数</h2><p>应用程序通过<code>read</code>/<code>write</code>/<code>sync</code>函数和底层交互进行读写。读写过程依次会经历<code>stdio buffer</code>/<code>kernel buffer</code>/<code>disk</code>。大致流程见下图【图1】：<br><img src="https://wangxin201492.github.io/techImages/linux-io-buffers.png" alt="linux-io-buffers.png"><br><code>read</code>用于数据读取，<code>write</code>用于数据写入，这两个行为默认情况下(<code>bufferedIO</code>)都是写入<code>kernel buffer</code>中，而<code>sync</code>则是将数据从<code>kernel buffer</code>刷入<code>disk</code></p>
 <h4 id="read-write-sync相关的函数区分"><a href="#read-write-sync相关的函数区分" class="headerlink" title="read/write/sync相关的函数区分"></a><code>read</code>/<code>write</code>/<code>sync</code>相关的函数区分</h4><p><img src="https://wangxin201492.github.io/techImages/linux-io-function-read-write-sync.png" alt="linux-io-function-read-write-sync.png"><br>上图【图2】描述的比较清楚</p>
 <ul>
 <li><code>fread</code>/<code>fwrite</code>是stdio提供的方法，数据仅和<code>stdio buffer</code> 交互</li>
@@ -896,7 +928,7 @@
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">2</span>
+                  <span class="site-state-item-count">4</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
@@ -907,7 +939,7 @@
               
               <div class="site-state-item site-state-tags">
                 <a href="/tags/index.html">
-                  <span class="site-state-item-count">2</span>
+                  <span class="site-state-item-count">4</span>
                   <span class="site-state-item-name">标签</span>
                 </a>
               </div>
