@@ -12,7 +12,7 @@ categories:
 MongoDB 提供了2种定时执行机制
 
 - `TaskExecutor::scheduleWorkAt(Date_t when, CallbackFn&& work)`
-- `PeriodicRunner::PeriodicJob()`
+- `PeriodicRunner::PeriodicJob`
 
  
 
@@ -20,12 +20,14 @@ MongoDB 提供了2种定时执行机制
 
 `TaskExecutor::scheduleWorkAt` 提供了一个在指定时间 `when` 执行的方式，具体在 `ThreadPoolTaskExecutor` 中实现。
 
- 
+
 
 `ThreadPoolTaskExecutor`实现 `scheduleWorkAt` 方法和 `scheduleWork` 逻辑基本一致：将 `CallbackFn` 添加到一个 `WorkQueue` 中，并获得一个 `CallbackHandle`，随后将 `WorkQueue` 插入到 `_poolInProgressQueue` 中等待被处理。区别在于：
 
 - `scheduleWork` 将 `CallbackFn` 添加到一个 temp 的 WorkQueue，而 `scheduleWorkAt` 添加到 `_sleepersQueue`
 - `scheduleWork` 中直接将 `WorkQueue` 中数据插入到 `_poolInProgressQueue` 中，而 `scheduleWorkAt` 则是通过 `_net::setAlarm` 注册一个时间 when 后回调插入的(`_net` 为一个 `NetworkInterfaceTL` 成员)。
+
+
 
  ```c++
 StatusWith<TaskExecutor::CallbackHandle> ThreadPoolTaskExecutor::scheduleWorkAt(
@@ -53,7 +55,7 @@ StatusWith<TaskExecutor::CallbackHandle> ThreadPoolTaskExecutor::scheduleWorkAt(
 >
 > 具体的回调函数即上文提到的 `CallbackFn` 被添加到 `WorkQueue`  中，而后被添加到*   `_poolInProgressQueue` 等待被消费
 
- 
+
 
 `NetworkInterfaceTL::setAlarm` 接收 3 个入参：`cbHandle`, `when`, `action`，`cbHandle` 主要做一些 状态管理 、 合理性校验等逻辑。action即为当面提到的将 `WorkQueue` 添加到 `_poolInProgressQueue` 的回调。
 
@@ -63,7 +65,7 @@ StatusWith<TaskExecutor::CallbackHandle> ThreadPoolTaskExecutor::scheduleWorkAt(
 
  关于指定时间执行的行为则在 `NetworkInterfaceTL::setAlarm` 中实现。
 
- 
+
 
 `ASIOReactorTimer` 中会持有一个 `_timer (asio::system_timer)` ，`waitUntil()` 中会依次调用 `_timer->expires_at()`, `_timer->async_wait()`进行计时等待
 
@@ -75,7 +77,7 @@ StatusWith<TaskExecutor::CallbackHandle> ThreadPoolTaskExecutor::scheduleWorkAt(
 -  `_answerAlarm` 中进行一系列判断后 也会标记 满足 promise ， 调用 action
 - action 中 会将 `_sleepersQueue` 中的数据插入到 `_poolInProgressQueue` 排队等待执行
 
- 
+
 
 由于 整个逻辑中回调函数比较多，所以堆栈会比较冗长，这里是以 为例的堆栈：
 
@@ -94,16 +96,11 @@ StatusWith<TaskExecutor::CallbackHandle> ThreadPoolTaskExecutor::scheduleWorkAt(
  Periodic* 类涉及3个接口：
 
 - `PeriodicJob` 描述一个周期性 job，接收3个参数：**job名称 name, Job执行逻辑 callable, 执行间隔 period**
-
 - `ControllableJob : PeriodicJob` 实际执行逻辑，*start / pause / resume / stop* .      
-
-- - `PeriodicJobImpl` 继承实现了该类。
-
+  - `PeriodicJobImpl` 继承实现了该类。
 - `PeriodicJobAnchor` : 包装一个 `ControllableJob` ，用于控制 `ControllableJob` 的执行。*start / pause /     resume / stop* .
-
 - `PeriodicRunner` ： 提供一个`makeJob` -- 初始化 `PeriodicJob` / `PeriodicJobImpl` / `PeriodicJobAnchor`.
-
-- - `PeriodicRunnerImpl` 继承实现了该类
+  - `PeriodicRunnerImpl` 继承实现了该类
 
  
 
@@ -116,7 +113,7 @@ StatusWith<TaskExecutor::CallbackHandle> ThreadPoolTaskExecutor::scheduleWorkAt(
 
 每个 job 有独立的线程处理，线程的名称即为 job 的名称。job 的运行管理在 `PeriodicJobImpl::_run` 中实现，负责管理的 *pause / resume / stop* 等行为会修改 job 的执行状态，`_run` 在执行前根据被标记的执行状态作出具体的处理。
 
- 
+
 
 正常情况下( RUNNING状态 )，_run 会调用 `clockSource->waitForConditionUntil`  ( _clockSource 为 `servicecontext ->getPreciseClockSource()` )，这中间由于 `tracksSystemClock = true / waitable = null`，所以时间等待最终的实现是 `stdx::condition_variable.wait_util(lock, deadline);`
 
