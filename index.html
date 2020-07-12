@@ -500,6 +500,869 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/MongoDB-Timer/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/MongoDB-Timer/" itemprop="url">MongoDB 源码中定时器机制</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-05-06T09:42:24+08:00">
+                2020-05-06
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p>MongoDB 提供了2种定时执行机制</p>
+<ul>
+<li><code>TaskExecutor::scheduleWorkAt(Date_t when, CallbackFn&amp;&amp; work)</code></li>
+<li><code>PeriodicRunner::PeriodicJob</code></li>
+</ul>
+<h2 id="TaskExecutor-scheduleWorkAt"><a href="#TaskExecutor-scheduleWorkAt" class="headerlink" title="TaskExecutor::scheduleWorkAt"></a>TaskExecutor::scheduleWorkAt</h2><p><code>TaskExecutor::scheduleWorkAt</code> 提供了一个在指定时间 <code>when</code> 执行的方式，具体在 <code>ThreadPoolTaskExecutor</code> 中实现。</p>
+<p><code>ThreadPoolTaskExecutor</code>实现 <code>scheduleWorkAt</code> 方法和 <code>scheduleWork</code> 逻辑基本一致：将 <code>CallbackFn</code> 添加到一个 <code>WorkQueue</code> 中，并获得一个 <code>CallbackHandle</code>，随后将 <code>WorkQueue</code> 插入到 <code>_poolInProgressQueue</code> 中等待被处理。区别在于：</p>
+<ul>
+<li><code>scheduleWork</code> 将 <code>CallbackFn</code> 添加到一个 temp 的 WorkQueue，而 <code>scheduleWorkAt</code> 添加到 <code>_sleepersQueue</code></li>
+<li><code>scheduleWork</code> 中直接将 <code>WorkQueue</code> 中数据插入到 <code>_poolInProgressQueue</code> 中，而 <code>scheduleWorkAt</code> 则是通过 <code>_net::setAlarm</code> 注册一个时间 when 后回调插入的(<code>_net</code> 为一个 <code>NetworkInterfaceTL</code> 成员)。</li>
+</ul>
+ <figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">StatusWith&lt;TaskExecutor::CallbackHandle&gt; <span class="title">ThreadPoolTaskExecutor::scheduleWorkAt</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">                                         Date_t when, CallbackFn&amp;&amp; work)</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="keyword">auto</span> wq = makeSingletonWorkQueue(<span class="built_in">std</span>::<span class="built_in">move</span>(work), <span class="literal">nullptr</span>, when);</span><br><span class="line">    ...</span><br><span class="line">    <span class="keyword">auto</span> cbHandle = enqueueCallbackState_inlock(&amp;_sleepersQueue, &amp;wq);</span><br><span class="line">    ...</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> status = _net-&gt;setAlarm(cbHandle.getValue(), </span><br><span class="line">                                 when, </span><br><span class="line">                                 [<span class="keyword">this</span>, cbHandle = cbHandle.getValue()](Status status) &#123;</span><br><span class="line">            ...</span><br><span class="line">            scheduleIntoPool_inlock(&amp;_sleepersQueue, cbState-&gt;iter, <span class="built_in">std</span>::<span class="built_in">move</span>(lk));</span><br><span class="line">        &#125;);</span><br><span class="line">    ...</span><br><span class="line">    <span class="keyword">return</span> cbHandle;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<blockquote>
+<p> <strong>Note:</strong>   <code>scheduleWorkAt</code> 和 <code>scheduleWork</code> 都会返回一个 <code>TaskExecutor::CallbackHandle</code> 对象  <code>cbHandle</code>，这个 <code>cbHandle</code> <em>不是一个回调函数*，应该是表示回调状态 的一个对象， <code>CallbackHandle</code> 持有一个 <code>CallbackState</code> , 而 <code>CallbackState</code> 的类注释为 *”Class representing a  scheduled callback and providing methods for interacting with it.”</em></p>
+<p>具体的回调函数即上文提到的 <code>CallbackFn</code> 被添加到 <code>WorkQueue</code>  中，而后被添加到*   <code>_poolInProgressQueue</code> 等待被消费</p>
+</blockquote>
+<p><code>NetworkInterfaceTL::setAlarm</code> 接收 3 个入参：<code>cbHandle</code>, <code>when</code>, <code>action</code>，<code>cbHandle</code> 主要做一些 状态管理 、 合理性校验等逻辑。action即为当面提到的将 <code>WorkQueue</code> 添加到 <code>_poolInProgressQueue</code> 的回调。</p>
+<p><code>NetworkInterfaceTL::setAlarm</code> 中 构造了一个 <code>PromiseFuture</code> 对象 <strong>pf ( future为 action）</strong>，并将时间点 when，回调状态 <code>cbHandle</code>，新建一个 <code>ASIOReactorTimer timer</code>，以及 pf.promise 封装成一个 <code>AlarmState</code> 。然后调用 <code>timer-&gt;waitUntil( when )</code> 等待到达指定时间（witerUntil 实际上也是返回一个 Future），指定时间到达时调用 <code>_answerAlarm</code> 标记 满足 promise（及触发上文 action ）</p>
+<p> 关于指定时间执行的行为则在 <code>NetworkInterfaceTL::setAlarm</code> 中实现。</p>
+<p><code>ASIOReactorTimer</code> 中会持有一个 <code>_timer (asio::system_timer)</code> ，<code>waitUntil()</code> 中会依次调用 <code>_timer-&gt;expires_at()</code>, <code>_timer-&gt;async_wait()</code>进行计时等待</p>
+<p><strong>总结一下</strong>：<code>TaskExecutor::scheduleWorkAt</code> 实际上是基于 <code>asio::system_timer</code> 库实现的指定时间执行逻辑。</p>
+<ul>
+<li>指定时间到达后，会标记 满足 promise ，调用 <code>_answerAlarm</code> </li>
+<li><code>_answerAlarm</code> 中进行一系列判断后 也会标记 满足 promise ， 调用 action</li>
+<li>action 中 会将 <code>_sleepersQueue</code> 中的数据插入到 <code>_poolInProgressQueue</code> 排队等待执行</li>
+</ul>
+<p>由于 整个逻辑中回调函数比较多，所以堆栈会比较冗长，这里是以 为例的堆栈：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">#0  mongo::ReplicaSetMonitor::_doScheduledRefresh (this&#x3D;0x7f0362e0fb00, currentHandle&#x3D;...) at src&#x2F;mongo&#x2F;client&#x2F;replica_set_monitor.cpp:249</span><br><span class="line">#5  0x00007f035e3fdd28 in mongo::executor::ThreadPoolTaskExecutor::runCallback (this&#x3D;0x7f0362e19140, cbStateArg&#x3D;...) at src&#x2F;mongo&#x2F;executor&#x2F;thread_pool_task_executor.cpp:659</span><br><span class="line">#7  0x00007f035e3ff7ad in mongo::executor::ThreadPoolTaskExecutor::scheduleIntoPool_inlock(mongo::executor::ThreadPoolTaskExecutor::WorkQueue*, const iterator&amp;, const iterator&amp;, std::unique_lock&lt;std::mutex&gt;)</span><br><span class="line">#16 0x00007f035e3fee44 in mongo::executor::ThreadPoolTaskExecutor::scheduleWorkAt(mongo::Date_t, mongo::executor::TaskExecutor::CallbackFn&amp;&amp;)</span><br><span class="line">#30 0x00007f035e43d6f2 in mongo::executor::NetworkInterfaceTL::_answerAlarm(mongo::Status, std::shared_ptr&lt;mongo::executor::NetworkInterfaceTL::AlarmState&gt;)</span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="PeriodicRunner-PeriodicJob"><a href="#PeriodicRunner-PeriodicJob" class="headerlink" title="PeriodicRunner::PeriodicJob"></a>PeriodicRunner::PeriodicJob</h2><p> Periodic* 类涉及3个接口：</p>
+<ul>
+<li><code>PeriodicJob</code> 描述一个周期性 job，接收3个参数：<strong>job名称 name, Job执行逻辑 callable, 执行间隔 period</strong></li>
+<li><code>ControllableJob : PeriodicJob</code> 实际执行逻辑，<em>start / pause / resume / stop</em> .      <ul>
+<li><code>PeriodicJobImpl</code> 继承实现了该类。</li>
+</ul>
+</li>
+<li><code>PeriodicJobAnchor</code> : 包装一个 <code>ControllableJob</code> ，用于控制 <code>ControllableJob</code> 的执行。<em>start / pause /     resume / stop</em> .</li>
+<li><code>PeriodicRunner</code> ： 提供一个<code>makeJob</code> – 初始化 <code>PeriodicJob</code> / <code>PeriodicJobImpl</code> / <code>PeriodicJobAnchor</code>.<ul>
+<li><code>PeriodicRunnerImpl</code> 继承实现了该类</li>
+</ul>
+</li>
+</ul>
+<p>上面这几个接口主要提供 job 的描述，job 运行的管理，但是也有2个比较奇怪的地方：</p>
+<ul>
+<li><code>PeriodicJobImpl</code> 看名称疑似 <code>PeriodicJob</code> 的具体实现，然而却是 <code>ControllableJob</code> 的实现</li>
+<li><code>PeriodicJobAnchor</code> 和 <code>ControllableJob</code> 都提供了 job 的 <em>start / pause / resume / stop</em> 行为。<code>PeriodicJobAnchor</code> 中包装一个 <code>ControllableJob</code> 对象 _handle，所有的 job 行为也都直接调用了 _handle 对应的函数</li>
+</ul>
+<p>每个 job 有独立的线程处理，线程的名称即为 job 的名称。job 的运行管理在 <code>PeriodicJobImpl::_run</code> 中实现，负责管理的 <em>pause / resume / stop</em> 等行为会修改 job 的执行状态，<code>_run</code> 在执行前根据被标记的执行状态作出具体的处理。</p>
+<p>正常情况下( RUNNING状态 )，_run 会调用 <code>clockSource-&gt;waitForConditionUntil</code>  ( _clockSource 为 <code>servicecontext -&gt;getPreciseClockSource()</code> )，这中间由于 <code>tracksSystemClock = true / waitable = null</code>，所以时间等待最终的实现是 <code>stdx::condition_variable.wait_util(lock, deadline);</code></p>
+<blockquote>
+<p><strong>Note:</strong>   PeriodicRunner::PeriodicJob 虽然进行初始化的时候传入的是一个 interval ，但是实际最终执行还是基于上次  job 开始执行的时间 + interval 获得一个 deadline 来定义下一次任务的触发时</p>
+</blockquote>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/MongoDB-ReplicaSetMonitor/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/MongoDB-ReplicaSetMonitor/" itemprop="url">MongoDB ReplicaSetMonitor对shard探测机制</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-04-27T12:59:24+08:00">
+                2020-04-27
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p>sharding实例对后端 shard 会进行状态探测，以发现 shard 是否有节点更新（ 选主、节点加入、节点异常）。提供探测能力的核心类为 <code>ReplicaSetMonitor</code> 及相关类。</p>
+<p>对于状态探测的基本逻辑应该也比较好构思：<strong>定期状态探测、探测结果存储、探测结果查询</strong>。MongoDB中也按照这个逻辑来完成的： </p>
+<ul>
+<li><p><code>ReplicaSetMonitor</code> 提供状态查询的接口，以及定期探测触发能力。状态信息存储在 <code>_state</code> (<code>SetState</code>类型成员变量) 中</p>
+</li>
+<li><p><code>SetState</code> 存储 ReplicaSet shard 的状态信息。包装 Node 记录各个 Node 的信息，持有一个 <code>ScanState</code> 记录该 ReplicaSet 当前正在 scan 的信息</p>
+</li>
+<li><p>Refresher 进行实际的状态探测，提供一个 static 方法 <code>ensureScanInProgress</code> 来初始化一个 Refresher 进行探测。</p>
+<ul>
+<li><code>Refresher</code> 与 <code>SetState</code> 是一一绑定的，只有 <code>SetState</code> 在被探测状态，才会有对应的 <code>Refresher</code> 产生</li>
+</ul>
+</li>
+<li><p><code>ScanState</code> 记录 <code>Refresher</code> 探测过程中的状态信息。<code>ScanState</code> 会被 <code>SetState::currentScan</code> 及 <code>Refresher::_scan</code> 持有，一般情况下这2个 scan 是相同的，但是可能存在并发的场景导致指向的不是同一个 scan， 这时候以 <code>SetState::currentScan</code> 为准。</p>
+</li>
+</ul>
+<p>ReplicaSetMonitor / SetState / Refresher / ScanState 具体关系参考下图：</p>
+<p><img src="https://wangxin201492.github.io/techImages/MongoDB-ReplicaSetMonitor.png" alt="MongoDB-ReplicaSetMonitor.png"></p>
+<h2 id="探测目标-shard-要求"><a href="#探测目标-shard-要求" class="headerlink" title="探测目标 shard 要求"></a>探测目标 shard 要求</h2><p><strong>只有以 ReplicaSet 方式启动的 shard(包含 config )，才会持有一个 <code>ReplicaSetMonitor</code> 类的成员。</strong>即只有 ReplicaSet shard 才会被探测，以 Standalong 方式启动的 shard 不会进行探测</p>
+<h2 id="探测触发"><a href="#探测触发" class="headerlink" title="探测触发"></a>探测触发</h2><p>ReplicaSetMonitor 中会<strong>定期进行 shard 状态探测</strong>，如果当前维系的状态<strong>不能满足其他代码的 ReadPreference 要求，也会下发探测</strong></p>
+<h3 id="定期探测"><a href="#定期探测" class="headerlink" title="定期探测"></a>定期探测</h3><p><code>ReplicaSetMonitor</code> 初始化时会调用<code>_scheduleRefresh</code>，而后通过 <code>_scheduleRefresh</code> 和 <code>_doScheduledRefresh</code> 两个函数相互调用及 <code>TaskExecutor::scheduleWorkAt</code> 完成:</p>
+<ul>
+<li><code>_scheduleRefresh</code>中通过使用 <code>TaskExecutor::scheduleWorkAt</code> 注册定时任务，定时任务负责调用 <code>_doScheduledRefresh</code></li>
+<li><code>_doScheduledRefresh</code> 负责调用 <code>Refresher::ensureScanInProgress</code> 进行 <code>Refresher</code> 新建与 探测下发。同时根据当前 <code>SetState</code> 的状态来决定下次刷新的周期，然后调用 <code>_scheduleRefresh</code> 注册新的定时任务</li>
+</ul>
+<p>默认情况下，定时任务每隔 <strong>kDefaultRefreshPeriod (30s)</strong> 执行一次。但是如果 SetState 的 waiters 结构中非空，则会将周期调整为 <strong>kExpeditedRefreshPeriod (500ms)</strong> 。SetState 的 waiters 结构中 数据添加在下文按需探测时，数据清理在探测执行完成时。</p>
+<h3 id="按需探测"><a href="#按需探测" class="headerlink" title="按需探测"></a>按需探测</h3><p>代码中需要按照某种 ReadPreference 获得 shard 的部分节点地址时，会调用 ReplicaSetMonitor 提供 <code>getHostsOrRefresh</code> 函数。如果当前持有的 shard 信息不能满足 ReadPreference 时，会构造一个 promise-future，返回 future ，然后将 promise 添加到 SetState 的 waiter 中，并立即下发刷新。</p>
+<ul>
+<li>如果刷新结果能满足 ReadPreference ，则返回对应的host</li>
+<li>如果不能满足，则会按照上文描述，下次 <code>_doScheduledRefresh</code> 被调用时，将刷新周期改为 <strong>500ms</strong></li>
+</ul>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> ReplicaSetMonitor::_doScheduledRefresh(<span class="keyword">const</span> CallbackHandle&amp; currentHandle) &#123;</span><br><span class="line">    ....</span><br><span class="line">    Refresher::ensureScanInProgress(_state, lk);</span><br><span class="line"></span><br><span class="line">    Milliseconds period = _state-&gt;refreshPeriod;</span><br><span class="line">    <span class="keyword">if</span> (_state-&gt;isExpedited) &#123;</span><br><span class="line">        <span class="keyword">if</span> (_state-&gt;waiters.empty()) &#123;</span><br><span class="line">            <span class="comment">// No current waiters so we can stop the expedited scanning.</span></span><br><span class="line">            _state-&gt;isExpedited = <span class="literal">false</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            period = <span class="built_in">std</span>::<span class="built_in">min</span>(period, kExpeditedRefreshPeriod);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    _scheduleRefresh(_state-&gt;now() + period, lk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+
+
+<h2 id="探测方式"><a href="#探测方式" class="headerlink" title="探测方式"></a>探测方式</h2><p>探测的核心 就是发送 <strong>isMaster()</strong> 命令并处理返回结果。</p>
+<p>探测的中间状态记录在上文描述的 <strong>ScanState</strong> 中，主要持有几个 成员 来实现：</p>
+<ul>
+<li><strong>hostsToScan</strong> : 待执行队列</li>
+<li><strong>possibleNodes</strong> :     非primary节点返回的node集合</li>
+<li><strong>waitingFor</strong> : 已经发送命令，等待返回的集合</li>
+<li><strong>triedHosts</strong> : 已经下发isMaster命令的集合</li>
+</ul>
+<p>探测过程有一个简单的状态机：<strong>CONTACT_HOST</strong>、<strong>WAIT</strong>、<strong>DONE</strong>，基于上面描述的 ScanState 持有的几个成员来判断：</p>
+<ul>
+<li><strong>CONTACT_HOST</strong> : 链接当前实例。如果 <strong>hostsToScan</strong> 中有 host，则会返回该 host 并标记状态为 <strong>CONTACT_HOST</strong></li>
+<li><strong>WAIT</strong> : 等待 response 。如果 <strong>hostsToScan</strong> 为空，而 <strong>waitingFor</strong> 不为空则标记为 WAIT 状态</li>
+<li><strong>DONE</strong> : Refresh 完成。如果 <code>_scan != _set-&gt;currentScan</code> 或者 <strong>hostsToScan</strong> &amp; <strong>waitingFor</strong> 均为空，则为 <strong>DONE</strong> 状态</li>
+</ul>
+<p>状态流转都在<code>getNextStep</code>中实现，用于<code>scheduleNetworkRequests</code>调度流转。</p>
+<p><code>IsMasterReply</code> : 记录isMaster必要的返回信息</p>
+<h3 id="请求下发"><a href="#请求下发" class="headerlink" title="请求下发"></a>请求下发</h3><p><code>scheduleNetworkRequests</code> 通过 <code>getNextStep</code> 依次从 <strong>hostsToScan</strong> 拿到一个host信息，并将 host 信息插入到 <strong>waitingFor</strong> 及 <strong>triedHosts</strong> 这 2 个 set 中。然后针对这个 host 调用 <code>scheduleIsMaster</code> </p>
+<p><code>scheduleIsMaster</code> 构建一个 isMaster 的request ，提交给 executor ，并注册回调：</p>
+<ul>
+<li>如果当前 Refresher 的 <code>_scan</code> 和 <code>_set-&gt;currentScan</code> 不同，则忽略返回结果</li>
+<li>如果返回结果是 ok，则调用 <code>receivedIsMaster</code>；否则调用 <code>failedHost</code></li>
+</ul>
+<h3 id="response处理"><a href="#response处理" class="headerlink" title="response处理"></a>response处理</h3><p><code>receivedIsMaster</code> : 将 host 从 waitingFor 中清理掉，然后构建一个 <code>IsMasterReply</code></p>
+<ul>
+<li>如果 <code>IsMasterReply</code> 的结果不是 ok ， 则会标记当前 host 为 fail</li>
+<li>如果 reply 中 setName 和 _set 中的 name 不匹配，则会标记当前 host 为 fail</li>
+<li>如果 reply 声明自己是 primary 节点， 则会调用 <code>receivedIsMasterFromMaster</code></li>
+<li>找到 primary 节点以后的 reply 处理： 将 reply 更新到对应的 <code>_set</code> 的 node 上，并在 notify 中判断是否有已经满足 <code>_set-&gt;waiter</code> 的 promise，有则返回</li>
+<li>未找到 primary 节点前的 reply 处理： 将 reply 的 member 全部加到 <strong>possibleNodes</strong> 中，如果在 reply 中声明了 primary 节点的地址且该 primary </li>
+<li>在 <strong>triedHosts</strong> 中，则将该节点重新添加会 <strong>hostsToScan</strong>。然后将该 reply 记录到 <strong>unconfirmedReplies</strong> 中</li>
+</ul>
+<p><code>receivedIsMasterFromMaster</code> 处理逻辑比较多，简单整理了下：</p>
+<ul>
+<li>有效性判断：判断 <code>configVersion</code> / <code>electionId</code> 的有效性</li>
+<li>状态存储：将 reply 的结果更新到 <code>SetState</code> 中。更新nodes / seedNodes / seedConnStr / workingConnstr</li>
+<li>清理<code>ScanState</code> 中记录的信息：<strong>triedHost</strong> / <strong>waiitingFor</strong> / <strong>unconfirmedReplies</strong></li>
+<li>如果 primary 有变化，则会通知所有的 listener 状态变更。</li>
+</ul>
+<p><code>failedHost</code> : 将 host从 <strong>waitingFor</strong> 中移除，并将node标记为 fail</p>
+<p>无论<code>receivedIsMaster</code> 还是 <code>failedHost</code> 执行完成后，都会调用 <code>scheduleNetworkRequests</code> 重新调度（可能有新加入 <strong>hostsToScan</strong> 的节点）</p>
+<h2 id="周边类"><a href="#周边类" class="headerlink" title="周边类"></a>周边类</h2><p><code>ReplicaSetMonitorManager</code> 是负责 <code>ReplicaSetMonitor</code> 的管理类，维护一个 map 结构 （记录 setName 和 <code>ReplicaSetMonitor</code>），一个<code>TaskExecutor</code> 用于所有 <code>ReplicaSetMonitor</code> 命令执行，以及一个<code>ReplicaSetChangeNotifier</code></p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-request-counter/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/command/serverStatus/MongoDB-request-counter/" itemprop="url">MongoDB 请求计数逻辑</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-04-22T17:25:43+08:00">
+                2020-04-22
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/command/" itemprop="url" rel="index">
+                    <span itemprop="name">command</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/command/serverStatus/" itemprop="url" rel="index">
+                    <span itemprop="name">serverStatus</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p>mongos上一个find请求堆栈主要路径是这个样子的：</p>
+<ul>
+<li>#0 mongo::(anonymous namespace)::<strong>ClusterFindCmd::Invocation::run</strong> (this=0x7f3705a8e2a0, opCtx=0x7f37064b5c80, result=0x7f3705b11650) at src/mongo/s/commands/cluster_find_cmd.cpp:205</li>
+<li>#1 0x00007f3701fae26a in mongo::(anonymous namespace)::<strong>execCommandClient</strong> (opCtx=0x7f37064b5c80, invocation=0x7f3705a8e2a0, request=…, result=0x7f3705b11650) at src/mongo/s/commands/strategy.cpp:303</li>
+<li>#2 0x00007f3701faff38 in mongo::(anonymous namespace)::runCommand (opCtx=0x7f37064b5c80, request=…, opType=mongo::dbMsg, replyBuilder=0x7f3705b11650, errorBuilder=0x7f36eeb1adc0) at src/mongo/s/commands/strategy.cpp:489</li>
+<li>#3 0x00007f3701fb1f76 in mongo::Strategy::clientCommand (opCtx=0x7f37064b5c80, m=…) at src/mongo/s/commands/strategy.cpp:800</li>
+<li>#4 0x00007f3701e243cc in mongo::ServiceEntryPointMongos::handleRequest (this=0x7f37058f6680, opCtx=0x7f37064b5c80, message=…) at src/mongo/s/service_entry_point_mongos.cpp:95</li>
+<li>#5 0x00007f3701e7d5e2 in mongo::<strong>ServiceStateMachine::_processMessage</strong> (this=0x7f3705ad6010, guard=…) at src/mongo/transport/service_state_machine.cpp:452</li>
+</ul>
+<p><code>db.serverStatus()</code> 输出结果中有3个地方对请求进行了计数，这里简单整理下</p>
+<ol>
+<li><code>db.serverStatus().network.numRequests</code>(简称<strong>requests计数</strong>） – 对应在堆栈中#5（即 <code>ServiceStateMachine::_processMessage()</code>）进行计数。表示<strong>接收的网络包数量</strong></li>
+<li><code>db.serverStatus().metrics.commands.*.total &amp; failed</code>（简称<strong>metrics计数</strong>） – 对应在堆栈中#1（即 <code>execCommandClient()</code> ）进行计数。表示<strong>不同命令执行的次数</strong></li>
+<li><code>db.serverStatus().opcounters</code>（简称<strong>opcounters计数</strong>） – 对应在堆栈中#0（即 <code>Invocation::run()</code>）即进行计数。表示<strong>requests计数</strong></li>
+</ol>
+<p><strong>requests计数</strong>和<strong>metrics计数</strong>的逻辑是固定的，而对于opcounters计数会根据请求的不同有一定gap。</p>
+<h2 id="opcounters-计数分析"><a href="#opcounters-计数分析" class="headerlink" title="opcounters 计数分析"></a>opcounters 计数分析</h2><p><code>db.serverStatus().opcounters</code> 包含如下结果：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">mongos&gt; db.serverStatus().opcounters</span><br><span class="line">&#123;</span><br><span class="line">        <span class="attr">"insert"</span> : NumberLong(<span class="number">6</span>),</span><br><span class="line">        <span class="attr">"query"</span> : NumberLong(<span class="number">1</span>),</span><br><span class="line">        <span class="attr">"update"</span> : NumberLong(<span class="number">2</span>),</span><br><span class="line">        <span class="attr">"delete"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">        <span class="attr">"getmore"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">        <span class="attr">"command"</span> : NumberLong(<span class="number">75</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>在<code>ServiceEntryPointMongos::handleRequest()</code>中对计数场景进行了区分：</p>
+<h3 id="计数场景1：-opcode-OP-MSG-或者-opcode-OP-QUERY-且-namespace的collection部分-“-cmd”"><a href="#计数场景1：-opcode-OP-MSG-或者-opcode-OP-QUERY-且-namespace的collection部分-“-cmd”" class="headerlink" title="计数场景1：(opcode == OP_MSG) 或者 (opcode == OP_QUERY 且 namespace的collection部分 == “$cmd”)"></a>计数场景1：(<code>opcode == OP_MSG</code>) 或者 (<code>opcode == OP_QUERY</code> 且 namespace的collection部分 == “$cmd”)</h3><p>按照上面举例的find堆栈 <code>clientCommand()</code> –&gt; <code>runCommand()</code> –&gt; <code>execCommandClient()</code> –&gt; <code>Invocation::run()</code> 依次调用。这里所有的command都会继承 Command 类，该类提供一个 <code>shouldAffectCommandCounter()</code> 返回True。</p>
+<ul>
+<li>insert / update / delete / query / getmore 请求重写了 <code>shouldAffectCommandCounter()</code> 返回 false ，在 <code>Invocation::run()</code> 中完成计数</li>
+<li>其余请求均作为 command，在 <code>execCommandClient()</code> 中完成计数</li>
+</ul>
+<h3 id="计数场景2：opcode-OP-QUERY-且-namespace的collection部分-“-cmd”"><a href="#计数场景2：opcode-OP-QUERY-且-namespace的collection部分-“-cmd”" class="headerlink" title="计数场景2：opcode == OP_QUERY 且 namespace的collection部分 != “$cmd”"></a>计数场景2：<code>opcode == OP_QUERY</code> 且 namespace的collection部分 != “$cmd”</h3><p>直接调用 <code>Strategy::queryOp()</code>， 并在其中完成计数</p>
+<h3 id="计数场景3：opcode-OP-GET-MORE"><a href="#计数场景3：opcode-OP-GET-MORE" class="headerlink" title="计数场景3：opcode == OP_GET_MORE"></a>计数场景3：<code>opcode == OP_GET_MORE</code></h3><p>直接调用 <code>Strategy::getMore()</code>，并在其中完成计数</p>
+<h3 id="计数场景4：opcode-OP-KILL-CURSORS"><a href="#计数场景4：opcode-OP-KILL-CURSORS" class="headerlink" title="计数场景4：opcode == OP_KILL_CURSORS"></a>计数场景4：<code>opcode == OP_KILL_CURSORS</code></h3><p>直接调用 <code>Strategy::killCursors()</code>，并在其中调用 <code>OpCounters::gotOp()</code></p>
+<p>gotOp 对 OP_KILL_CURSORS / OP_REPLY 不进行计数，即这两种场景不会记录在 opcounters 中</p>
+<h3 id="计数场景5：opcode-OP-INSERT-OP-UPDATE-OP-DELETE"><a href="#计数场景5：opcode-OP-INSERT-OP-UPDATE-OP-DELETE" class="headerlink" title="计数场景5：opcode == OP_INSERT / OP_UPDATE / OP_DELETE"></a>计数场景5：<code>opcode == OP_INSERT / OP_UPDATE / OP_DELETE</code></h3><p>按照场景1堆栈 <code>Strategy::writeOp()</code> –&gt; <code>runCommand()</code> –&gt; <code>execCommandClient()</code> –&gt; <code>Invocation::run()</code> 依次调用，同场景1</p>
+<h3 id="对insert-update-delete-请求的计数说明"><a href="#对insert-update-delete-请求的计数说明" class="headerlink" title="对insert / update / delete 请求的计数说明"></a>对<code>insert / update / delete</code> 请求的计数说明</h3><p>对于insert / update / delete 请求，会在 <code>Invocation::run()</code> 中完成计数，但是对这3个请求的处理不是简单的+1完成的。增加的数量为 <code>batchedRequest.sizeWriteOps()</code>。由于3.6版本中新增了 OP_MSG 的协议类型，支持这3种请求携带多条数据：即 OP_MSG 协议中 <strong>kind=Document Sequence 的 sections 字段</strong>。这3种请求的具体实现，都重写了 Command 类提供的 parse 函数，基于原有的 request 构建了一个额外的 <code>BatchedCommandRequest</code> ，调用的是 <code>BatchedCommandRequest::parseInsert()</code> 函数。</p>
+<p>实际执行验证来看：</p>
+<p>通过insert插入一个BSONArray，opcounters.insert 会增加 array 的 size。和上面的分析是对齐的</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">mongos&gt; db.serverStatus().opcounters</span><br><span class="line">&#123;</span><br><span class="line">	<span class="attr">"insert"</span> : NumberLong(<span class="number">2</span>),</span><br><span class="line">	<span class="attr">"query"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"update"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"delete"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"getmore"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"command"</span> : NumberLong(<span class="number">58</span>)</span><br><span class="line">&#125;</span><br><span class="line">mongos&gt; db.collection.insert([&#123;name: "B"&#125;,&#123;name: "C"&#125;])</span><br><span class="line">BulkWriteResult(&#123;</span><br><span class="line">	"writeErrors" : [ ],</span><br><span class="line">	"writeConcernErrors" : [ ],</span><br><span class="line">	"nInserted" : 2,</span><br><span class="line">	"nUpserted" : 0,</span><br><span class="line">	"nMatched" : 0,</span><br><span class="line">	"nModified" : 0,</span><br><span class="line">	"nRemoved" : 0,</span><br><span class="line">	"upserted" : [ ]</span><br><span class="line">&#125;)</span><br><span class="line">mongos&gt; db.serverStatus().opcounters</span><br><span class="line">&#123;</span><br><span class="line">	<span class="attr">"insert"</span> : NumberLong(<span class="number">4</span>),</span><br><span class="line">	<span class="attr">"query"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"update"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"delete"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"getmore"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"command"</span> : NumberLong(<span class="number">62</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>而 <code>db.colleciton.update()</code> / <code>db.colleciton.delete()</code> 并不像 <code>insert()</code> 一样支持多条记录的修改。这几个函数都是被 mongo shell 封装过的，具体通过 insert / update / delete 进行多条document修改可以参考<a href="https://docs.mongodb.com/manual/reference/command/nav-crud/" target="_blank" rel="noopener">官网文档</a>中提供的命令，分别对应有 inserts / updates / deletes 字段支持多条document修改</p>
+<p><strong>Notice:</strong> 按照上面的分析，对于opcode == OP_QUERY / OP_GET_MORE / OP_KILL_CURSORS 的场景，对metrics计数应该是有缺失的。</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-serverStatus/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/command/serverStatus/MongoDB-serverStatus/" itemprop="url">MongoDB serverStatus实现原理</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-04-21T13:15:09+08:00">
+                2020-04-21
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/command/" itemprop="url" rel="index">
+                    <span itemprop="name">command</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/command/serverStatus/" itemprop="url" rel="index">
+                    <span itemprop="name">serverStatus</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p> <code>CmdServerStatus</code> 的 run() 函数是 <code>serverStatus</code> 命令的具体实现</p>
+<ul>
+<li>首先将一些全局信息添加到result中</li>
+<li>遍历<code>_sections</code>，调用<code>appendSection</code>，将所有注册的<code>Section</code>结果添加到result中</li>
+<li>调用<code>MetricTree::theMetricTree-&gt;appendTo()</code>，将所有<code>Metric</code>指标添加到result中</li>
+<li>其他一些信息的补充</li>
+</ul>
+<p>同时 <code>CmdServerStatus</code> 还维护了一个 <code>_sections</code> （map结构）存储section名称和具体 <code>ServerStatusSection</code> 的对应关系。提供 <code>addSection</code> 函数将制定section添加到 <code>_sections</code> 中</p>
+<h2 id="Section指标"><a href="#Section指标" class="headerlink" title="Section指标"></a>Section指标</h2><p><code>ServerStatusSection</code> 是所有 <code>section</code> 指标的基类，构造方法调用 <code>CmdServerStatusInstantiator::getInstance()-&gt;addSection()</code> 将自身注册到 <code>CmdServerStatus</code> 中。并声明 virtual 函数 <code>includeByDefault</code> , <code>addRequiredPrivileges</code> , <code>generateSection</code> , <code>appendSection</code> 由子类定义实现，子类主要需要按需求定义<code>includeByDefault</code> , <code>generateSection</code> 的具体实现。</p>
+<ul>
+<li><code>includeByDefault</code> 用于说明是否默认被包含</li>
+<li><code>generateSection</code>&amp;<code>appendSection</code>   一般实现其中一个即可，父类方法中<code>appendSection</code> 调用了 <code>generateSection</code> ，所以一般只需要实现 <code>generateSection</code> 即可。</li>
+</ul>
+<p><code>CmdServerStatusInstantiator</code> 是包装 <code>CmdServerStatus</code> 用于获取 <code>CmdServerStatus</code> 单例对象的一个struct，提供 <code>getInstance()</code> 完成单例对象获取。所以上面讲到的 <code>ServerStatusSection</code> 构造时调用 <code>CmdServerStatusInstantiator::getInstance()-&gt;addSection()</code> ，最终完成了自身到 <code>CmdServerStatus</code> 的 _sections 注册。</p>
+<p>serverStatus命令运行时将遍历自身的 _sections ，依次根据 <code>includeByDefault</code> 配置，调用其 appendSection 完成 response BSON 的构建。</p>
+<blockquote>
+<p>其他 Command 都是在类声明的时候同时定义了一个对象，完成到 CommandMap 的注册。而 <code>CmdServerStatus</code> 由于需要 <code>CmdServerStatusInstantiator</code> 构建单例对象，所以是在 <code>CmdServerStatusInstantiator</code> 声明时定义了一个对象，完成 <code>CmdServerStatus</code> 到 CommandMap 的注册行为。</p>
+</blockquote>
+<h2 id="Metric指标"><a href="#Metric指标" class="headerlink" title="Metric指标"></a>Metric指标</h2><p><code>MetricTree</code>维护了一个树状结构(下文简称Tree) 用于存储所有的 metric指标 及其 path 对应关系，同时提供一个静态变量 <code>theMetricTree</code> 对外提供服务。同时提供 <code>add</code> 和 <code>appendTo</code> 函数分别用于将 Tree 添加到 <code>theMetricTree</code> 以及将 Tree 的数据以BSON的形式输出。</p>
+<ul>
+<li><p><code>add</code> 函数用于将 <code>ServerStatusMetric</code> 添加到 <code>Tree</code> : <code>Tree</code> 维护 <code>metrics path</code> 和 <code>ServerStatusMetric</code> 的对应关系，内部是由 2 个 map 构成的，如果当前 <code>metrics path</code> 是叶子节点（即 path 中不存在”.”），那么存储到``path –&gt; ServerStatusMetric<code>的 map 中，反之取出 path 的第一级路径，存储到 第一级路径 --&gt;</code>MetricTree` （不存在则新加一个） ，然后递归调用完成添加</p>
+</li>
+<li><ul>
+<li>如果 path 是以 “.” 为开头，则添加到 Tree 的顶级路径，否则会在提供的 path 前添加 “metrics.” 前缀（即添加到metrics的子节点上）</li>
+</ul>
+</li>
+<li><p><code>appendTo</code> 函数用于将 <code>Tree</code> 的数据以BSON的形式输出 ： 对于非叶子节点，会递归调用 <code>appendTo</code> 函数。对于叶子节点则会调用 <code>ServerStatusMetric</code> 的 <code>appendAtLeaf</code> 函数。最终根据所有 <code>ServerStatusMetric</code> 的 path 产生对应的的BSON</p>
+</li>
+</ul>
+<p><code>ServerStatusMetric</code> 是所有 metric指标 的基类，主要提供构造方法调用 <code>MetricTree::theMetricTree-&gt;add(this)</code> 将自身注册到 <code>MetricTree</code> 中。并声明一个 <code>virtual appendAtLeaf</code> 函数由子类定义实现。该类有4个子类：</p>
+<ul>
+<li><p>模板类 <code>ServerStatusMetricField</code> 是一个被广泛应用的子类。增加一个T，用于实现大多数需求：都是 k-v 的结构， <code>appendAtLeaf</code>将 <strong>k &amp; v</strong> 直接append到bson中</p>
+</li>
+<li><ul>
+<li>举例场景：所有command的一个成员变量，用于做类似命令与请求次数的绑定，便于serverStatus拿到结果</li>
+</ul>
+</li>
+<li><p><code>MemBase (= .mem.bits )</code> ，获取MongoDB使用的内存信息</p>
+</li>
+<li><p><code>ClusterCursorStats (= cursor )</code>，cursor 信息</p>
+</li>
+<li><p><code>ReplExecutorSSM (= repl.executor )</code>，// TODO</p>
+</li>
+</ul>
+<p>serverStatus命令运行时，将调用 <code>theMetricTree</code> 的 <code>appendTo</code> 函数，完成 response BSON 的构建</p>
+<h2 id="Section指标-amp-Metric指标-实现对比"><a href="#Section指标-amp-Metric指标-实现对比" class="headerlink" title="Section指标 &amp; Metric指标 实现对比"></a>Section指标 &amp; Metric指标 实现对比</h2><p>ServerStatusMetric 和 ServerStatusSection 下文统称为Impl</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Section指标</th>
+<th>Metric指标</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>都有一个单例的对象管理</td>
+<td>CmdServerStatusInstantiator::getInstance()</td>
+<td>MetricTree::theMetricTree</td>
+</tr>
+<tr>
+<td>都是 name – Impl  的对应关系</td>
+<td>CmdServerStatus  中_sections是一个map结构  name – ServerStatusSection</td>
+<td>ServerStatusMetric中基于2个map结构实现了一个树状结构  叶子节点也都是  name – ServerStatusMetric</td>
+</tr>
+<tr>
+<td>Impl都提供一个函数将结果  append 到 response 中</td>
+<td>generateSection&amp;appendSection</td>
+<td>appendTo</td>
+</tr>
+</tbody></table>
+<p>区别应该有2点：</p>
+<ol>
+<li><code>ServerStatusSection</code>的append函数 <code>generateSection</code>&amp;<code>appendSection</code> 包含了 opCtx 和 configElement 。定义分别是<ul>
+<li>`virtual BSONObj generateSection(OperationContext* opCtx, const BSONElement&amp;      configElement) const;``</li>
+<li>``virtual void appendSection(OperationContext* opCtx, const BSONElement&amp;      configElement, BSONObjBuilder* result) const;`</li>
+</ul>
+</li>
+<li><code>ServerStatusSection</code>提供了 <code>includeByDefault</code> 和 <code>addRequiredPrivileges</code> 对输出结构的控制力更强一些</li>
+</ol>
+<p>看起来是对于serverStatus默认添加且是计数行为的使用 <code>ServerStatusMetric</code> 比较方便简单一些。其他情况尤其对于 opCtx 有依赖或者需要控制对serverStatus输出的还是使用 <code>ServerStatusSection</code> 操控力更强一些。</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/linux/linux-subsys-IO/linux-io-overview/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1692,367 +2555,13 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
 
 
     
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/ReadingNote/WebsiteArchitecture/ReadingNote-WebsiteArchitecture-CoreElement/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/ReadingNote/WebsiteArchitecture/ReadingNote-WebsiteArchitecture-CoreElement/" itemprop="url">大型网站技术架构 - 大型网站核心架构要素</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2014-07-25T20:23:43+08:00">
-                2014-07-25
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/ReadingNote/" itemprop="url" rel="index">
-                    <span itemprop="name">ReadingNote</span>
-                  </a>
-                </span>
-
-                
-                
-                  ， 
-                
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/ReadingNote/WebsiteArchitecture/" itemprop="url" rel="index">
-                    <span itemprop="name">WebsiteArchitecture</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <h2 id="1-性能"><a href="#1-性能" class="headerlink" title="1.性能"></a>1.性能</h2><ul>
-<li><strong>浏览器端</strong>：浏览器缓存、页面压缩、合理布局、减少cookie传输、CDN</li>
-<li><strong>应用服务器端</strong>：本地缓存、分布式缓存、异步。</li>
-<li><strong>代码</strong>：多线程、改善内存管理。</li>
-<li><strong>数据库</strong>：索引、缓存、sql优化</li>
-</ul>
-<p><strong>衡量网站性能</strong>有一系列的指标：响应时间、TPS、系统性能计数器。</p>
-<h2 id="2-可用性"><a href="#2-可用性" class="headerlink" title="2.可用性"></a>2.可用性</h2><p>网站可用性主要手段是冗余。</p>
-<p>对于应用服务器而言，多台应用服务器通过负载均衡组成一个集群，任何服务器宕机只需要把请求切换到其他服务器即可。但是有一个前提条件：应用服务器上不能保存请求的会话信息。</p>
-<p>对于存储服务器，当有服务器宕机时需要将数据访问转移到可用的服务器上，并进行数据回复，以保证继续有服务器宕机的时候数据依然可用。</p>
-<p>衡量一个系统是否满足高可用的目标，就是假设系统中任何一台或者多台服务器宕机，系统整体是否依然可用。</p>
-<h2 id="3-伸缩性"><a href="#3-伸缩性" class="headerlink" title="3.伸缩性"></a>3.伸缩性</h2><p>伸缩性是指通过不断向及群众加入服务器的手段来缓解不断上升的用户并发访问压力和不断增长的数据存储需求。</p>
-<p>衡量架构伸缩性的主要指标就是是否可以用多台服务器构建进群，是否容易向集群中添加新的服务器。加入新的服务器后是否可以提供和原来的服务器无差别的服务。集群中可容纳的总的服务器的数量是否有限制。</p>
-<p>应用服务器：负载均衡</p>
-<p>缓存服务器：改进缓存路由算法</p>
-<p>数据库服务器：数据复制，主从热备，路由分区</p>
-<p>NoSQL:天然支持</p>
-<h2 id="4-扩展性"><a href="#4-扩展性" class="headerlink" title="4.扩展性"></a>4.扩展性</h2><p>不同于其他架构要素主要关注非功能性需求，网站的扩展性架构直接关注网站的功能性需求。</p>
-<p>衡量一个网站架构</p>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/ReadingNote/WebsiteArchitecture/ReadingNote-WebsiteArchitecture-Scalability/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/ReadingNote/WebsiteArchitecture/ReadingNote-WebsiteArchitecture-Scalability/" itemprop="url">大型网站技术架构 - 网站的伸缩性架构</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2014-07-25T20:23:43+08:00">
-                2014-07-25
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/ReadingNote/" itemprop="url" rel="index">
-                    <span itemprop="name">ReadingNote</span>
-                  </a>
-                </span>
-
-                
-                
-                  ， 
-                
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/ReadingNote/WebsiteArchitecture/" itemprop="url" rel="index">
-                    <span itemprop="name">WebsiteArchitecture</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <h2 id="1-网站架构的伸缩性设计"><a href="#1-网站架构的伸缩性设计" class="headerlink" title="1.网站架构的伸缩性设计"></a>1.网站架构的伸缩性设计</h2><p>一般说来，网站的伸缩性设计可分成2类：一类是根据功能进行物理分离实现伸缩（横向，纵向）；一类是单一功能通过集群实现伸缩。</p>
-<p>具体说来集群伸缩性又可分为应用服务器集群伸缩性和数据服务器集群伸缩性。这两种集群由于对数据状态管理的不同，技术实现也有很大的区别。而数据服务器集群也可分为缓存数据服务器集群和存储数据服务器集群。</p>
-<h2 id="2-应用服务器集群的伸缩性设计"><a href="#2-应用服务器集群的伸缩性设计" class="headerlink" title="2.应用服务器集群的伸缩性设计"></a>2.应用服务器集群的伸缩性设计</h2><p>如果HTTP请求分发装置可以感知或者可以配置集群的服务器数量，可以及时发现及群众新上线或下线的服务器，并能向新上线的服务器分发请求，停止向已下线的服务器分发请求，那么就实现了应用服务器集群的伸缩性。这个HTTP请求分发装置被称作负载均衡服务器。</p>
-<ol>
-<li><strong>HTTP**</strong>重定向**<ol>
-<li>叙述：一台普通的应用服务器，返回302重定向</li>
-<li>缺点：浏览器需要2次请求服务器才能完成一次访问。重定向服务器自身处理能力是瓶颈。</li>
-</ol>
-</li>
-<li><strong>DNS**</strong>域名解析**<ol>
-<li>叙述：在DNS服务器中配置多个IP地址</li>
-<li>缺点：目前的DNS时多级解析，每一级DNS都可能`缓存A记录，因此下线某台服务器后，即使修改了DNS的A记录，也不能及时生效。</li>
-</ol>
-</li>
-<li><strong>反向代理（Nginx**</strong>）**<ol>
-<li>叙述：将请求根据负载均衡算法转发到不同的Web服务器上，Web服务器的响应也需要通过反向代理服务器返回给用户。</li>
-<li>缺点：反向代理时所有请求和相应的中转站，其性能很有可能成为瓶颈。</li>
-</ol>
-</li>
-<li><strong>IP**</strong>负载均衡**<ol>
-<li>叙述：内核进程更改目的IP地址，不需要经过用户进程（NAT转换）。相比于反向代理有更好的性能。</li>
-<li>缺点：所有请求相应都需要经过负载均衡服务器，集群的最大响应数据吞吐量受制于负载均衡服务器网卡带宽。对于提供下载服务或者视频服务的网站，难以满足需求。</li>
-</ol>
-</li>
-<li><strong>数据链路层反向代理</strong><ol>
-<li>叙述：在数据链路层直接修改mac地址进行负载均衡，不修改src，dest而进行数据分发。避免负载均衡服务器网卡带宽成为瓶颈。这种负载均衡方式有称作DR。</li>
-<li>被称作三角传输模式，时目前大型网站使用最广的一种负载均衡手段。</li>
-</ol>
-</li>
-</ol>
-<h2 id="3-分布式缓存集群的伸缩性设计"><a href="#3-分布式缓存集群的伸缩性设计" class="headerlink" title="3.分布式缓存集群的伸缩性设计"></a>3.分布式缓存集群的伸缩性设计</h2><p>和所有服务器都部署相同应用的应用服务器集群不同，分布式缓存服务器集群中不同服务器中缓存的数据各不相同，缓存访问请求不可以在缓存服务器集群中的任意一台处理，必须先找到缓存有需要数据的服务器才能访问。</p>
-<p>设计原则：必须让新上线的缓存服务器对整个分布式缓存集群影响最小，也就是说新加入缓存服务器后应使整个缓存服务器集群中已经缓存的数据尽可能的被访问到。</p>
-<p><strong>一致性哈希！！！</strong></p>
-<h2 id="4-数据存储服务器集群的伸缩性设计"><a href="#4-数据存储服务器集群的伸缩性设计" class="headerlink" title="4.数据存储服务器集群的伸缩性设计"></a>4.数据存储服务器集群的伸缩性设计</h2><p>缓存的目的时加速数据读取的速度并减轻数据存储服务器的负载压力，因此，部分缓存丢失不影响业务的正常处理。而数据存储服务器必须保证数据的可靠存储，任何情况下，都必须保证数据的可用性和正确性。</p>
-<h3 id="4-1关系数据库集群的伸缩性设计"><a href="#4-1关系数据库集群的伸缩性设计" class="headerlink" title="4.1关系数据库集群的伸缩性设计"></a>4.1关系数据库集群的伸缩性设计</h3><p>主从复制，读写分离，业务分库。Cobar</p>
-<h3 id="4-2NoSQL数据库的伸缩性设计"><a href="#4-2NoSQL数据库的伸缩性设计" class="headerlink" title="4.2NoSQL数据库的伸缩性设计"></a>4.2NoSQL数据库的伸缩性设计</h3>
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
   </section>
 
   
+  <nav class="pagination">
+    <span class="page-number current">1</span><a class="page-number" href="/page/2/">2</a><a class="extend next" rel="next" href="/page/2/">&lt;i class&#x3D;&quot;fa fa-angle-right&quot;&gt;&lt;&#x2F;i&gt;</a>
+  </nav>
+
 
 
           </div>
@@ -2096,7 +2605,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">8</span>
+                  <span class="site-state-item-count">12</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -2107,7 +2616,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">9</span>
+                  <span class="site-state-item-count">12</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
@@ -2118,7 +2627,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
               <div class="site-state-item site-state-tags">
                 <a href="/tags/index.html">
-                  <span class="site-state-item-count">14</span>
+                  <span class="site-state-item-count">18</span>
                   <span class="site-state-item-name">标签</span>
                 </a>
               </div>

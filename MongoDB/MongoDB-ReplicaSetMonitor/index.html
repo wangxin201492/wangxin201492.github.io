@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next pisces use-motion" lang="zh-Hans">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+  <link href="/lib/fancybox/source/jquery.fancybox.css?v=2.1.5" rel="stylesheet" type="text/css" />
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=5.1.4" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=5.1.4">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=5.1.4">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=5.1.4">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=5.1.4" color="#222">
+
+
+
+
+
+  <meta name="keywords" content="MongoDB-OTT,MongoDB:ReplicaSetMonitor," />
+
+
+
+
+
+
+
+
+
+
+<meta name="description" content="sharding实例对后端 shard 会进行状态探测，以发现 shard 是否有节点更新（ 选主、节点加入、节点异常）。提供探测能力的核心类为 ReplicaSetMonitor 及相关类。 对于状态探测的基本逻辑应该也比较好构思：定期状态探测、探测结果存储、探测结果查询。MongoDB中也按照这个逻辑来完成的：   ReplicaSetMonitor 提供状态查询的接口，以及定期探测触发能力。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="MongoDB ReplicaSetMonitor对shard探测机制">
+<meta property="og:url" content="https://wangxin201492.github.io/MongoDB/MongoDB-ReplicaSetMonitor/index.html">
+<meta property="og:site_name" content="wangxin201492">
+<meta property="og:description" content="sharding实例对后端 shard 会进行状态探测，以发现 shard 是否有节点更新（ 选主、节点加入、节点异常）。提供探测能力的核心类为 ReplicaSetMonitor 及相关类。 对于状态探测的基本逻辑应该也比较好构思：定期状态探测、探测结果存储、探测结果查询。MongoDB中也按照这个逻辑来完成的：   ReplicaSetMonitor 提供状态查询的接口，以及定期探测触发能力。">
+<meta property="og:image" content="https://wangxin201492.github.io/techImages/MongoDB-ReplicaSetMonitor.png">
+<meta property="article:published_time" content="2020-04-27T04:59:24.000Z">
+<meta property="article:modified_time" content="2020-07-01T09:06:03.015Z">
+<meta property="article:author" content="wangxin201492">
+<meta property="article:tag" content="MongoDB-OTT">
+<meta property="article:tag" content="MongoDB:ReplicaSetMonitor">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://wangxin201492.github.io/techImages/MongoDB-ReplicaSetMonitor.png">
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Pisces',
+    version: '5.1.4',
+    sidebar: {"position":"right","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: true,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    duoshuo: {
+      userId: '0',
+      author: '博主'
+    },
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+
+  <link rel="canonical" href="https://wangxin201492.github.io/MongoDB/MongoDB-ReplicaSetMonitor/"/>
+
+
+
+
+
+  <title>MongoDB ReplicaSetMonitor对shard探测机制 | wangxin201492</title>
+  
+
+
+
+
+
+  <script type="text/javascript">
+    var _hmt = _hmt || [];
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "https://hm.baidu.com/hm.js?b4b40ab284f92e7b4921a8198acda5b7";
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+  </script>
+
+
+
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-Hans">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-right page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/"  class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">wangxin201492</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle"></p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        <li class="menu-item menu-item-home">
+          <a href="/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            首页
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-tags">
+          <a href="/tags/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            标签
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-categories">
+          <a href="/categories/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            分类
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            归档
+          </a>
+        </li>
+      
+
+      
+    </ul>
+  
+
+  
+</nav>
+
+
+
+ </div>
+    </header>
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/MongoDB-ReplicaSetMonitor/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">MongoDB ReplicaSetMonitor对shard探测机制</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-04-27T12:59:24+08:00">
+                2020-04-27
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>sharding实例对后端 shard 会进行状态探测，以发现 shard 是否有节点更新（ 选主、节点加入、节点异常）。提供探测能力的核心类为 <code>ReplicaSetMonitor</code> 及相关类。</p>
+<p>对于状态探测的基本逻辑应该也比较好构思：<strong>定期状态探测、探测结果存储、探测结果查询</strong>。MongoDB中也按照这个逻辑来完成的： </p>
+<ul>
+<li><p><code>ReplicaSetMonitor</code> 提供状态查询的接口，以及定期探测触发能力。状态信息存储在 <code>_state</code> (<code>SetState</code>类型成员变量) 中</p>
+</li>
+<li><p><code>SetState</code> 存储 ReplicaSet shard 的状态信息。包装 Node 记录各个 Node 的信息，持有一个 <code>ScanState</code> 记录该 ReplicaSet 当前正在 scan 的信息</p>
+</li>
+<li><p>Refresher 进行实际的状态探测，提供一个 static 方法 <code>ensureScanInProgress</code> 来初始化一个 Refresher 进行探测。</p>
+<ul>
+<li><code>Refresher</code> 与 <code>SetState</code> 是一一绑定的，只有 <code>SetState</code> 在被探测状态，才会有对应的 <code>Refresher</code> 产生</li>
+</ul>
+</li>
+<li><p><code>ScanState</code> 记录 <code>Refresher</code> 探测过程中的状态信息。<code>ScanState</code> 会被 <code>SetState::currentScan</code> 及 <code>Refresher::_scan</code> 持有，一般情况下这2个 scan 是相同的，但是可能存在并发的场景导致指向的不是同一个 scan， 这时候以 <code>SetState::currentScan</code> 为准。</p>
+</li>
+</ul>
+<p>ReplicaSetMonitor / SetState / Refresher / ScanState 具体关系参考下图：</p>
+<p><img src="https://wangxin201492.github.io/techImages/MongoDB-ReplicaSetMonitor.png" alt="MongoDB-ReplicaSetMonitor.png"></p>
+<h2 id="探测目标-shard-要求"><a href="#探测目标-shard-要求" class="headerlink" title="探测目标 shard 要求"></a>探测目标 shard 要求</h2><p><strong>只有以 ReplicaSet 方式启动的 shard(包含 config )，才会持有一个 <code>ReplicaSetMonitor</code> 类的成员。</strong>即只有 ReplicaSet shard 才会被探测，以 Standalong 方式启动的 shard 不会进行探测</p>
+<h2 id="探测触发"><a href="#探测触发" class="headerlink" title="探测触发"></a>探测触发</h2><p>ReplicaSetMonitor 中会<strong>定期进行 shard 状态探测</strong>，如果当前维系的状态<strong>不能满足其他代码的 ReadPreference 要求，也会下发探测</strong></p>
+<h3 id="定期探测"><a href="#定期探测" class="headerlink" title="定期探测"></a>定期探测</h3><p><code>ReplicaSetMonitor</code> 初始化时会调用<code>_scheduleRefresh</code>，而后通过 <code>_scheduleRefresh</code> 和 <code>_doScheduledRefresh</code> 两个函数相互调用及 <code>TaskExecutor::scheduleWorkAt</code> 完成:</p>
+<ul>
+<li><code>_scheduleRefresh</code>中通过使用 <code>TaskExecutor::scheduleWorkAt</code> 注册定时任务，定时任务负责调用 <code>_doScheduledRefresh</code></li>
+<li><code>_doScheduledRefresh</code> 负责调用 <code>Refresher::ensureScanInProgress</code> 进行 <code>Refresher</code> 新建与 探测下发。同时根据当前 <code>SetState</code> 的状态来决定下次刷新的周期，然后调用 <code>_scheduleRefresh</code> 注册新的定时任务</li>
+</ul>
+<p>默认情况下，定时任务每隔 <strong>kDefaultRefreshPeriod (30s)</strong> 执行一次。但是如果 SetState 的 waiters 结构中非空，则会将周期调整为 <strong>kExpeditedRefreshPeriod (500ms)</strong> 。SetState 的 waiters 结构中 数据添加在下文按需探测时，数据清理在探测执行完成时。</p>
+<h3 id="按需探测"><a href="#按需探测" class="headerlink" title="按需探测"></a>按需探测</h3><p>代码中需要按照某种 ReadPreference 获得 shard 的部分节点地址时，会调用 ReplicaSetMonitor 提供 <code>getHostsOrRefresh</code> 函数。如果当前持有的 shard 信息不能满足 ReadPreference 时，会构造一个 promise-future，返回 future ，然后将 promise 添加到 SetState 的 waiter 中，并立即下发刷新。</p>
+<ul>
+<li>如果刷新结果能满足 ReadPreference ，则返回对应的host</li>
+<li>如果不能满足，则会按照上文描述，下次 <code>_doScheduledRefresh</code> 被调用时，将刷新周期改为 <strong>500ms</strong></li>
+</ul>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> ReplicaSetMonitor::_doScheduledRefresh(<span class="keyword">const</span> CallbackHandle&amp; currentHandle) &#123;</span><br><span class="line">    ....</span><br><span class="line">    Refresher::ensureScanInProgress(_state, lk);</span><br><span class="line"></span><br><span class="line">    Milliseconds period = _state-&gt;refreshPeriod;</span><br><span class="line">    <span class="keyword">if</span> (_state-&gt;isExpedited) &#123;</span><br><span class="line">        <span class="keyword">if</span> (_state-&gt;waiters.empty()) &#123;</span><br><span class="line">            <span class="comment">// No current waiters so we can stop the expedited scanning.</span></span><br><span class="line">            _state-&gt;isExpedited = <span class="literal">false</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            period = <span class="built_in">std</span>::<span class="built_in">min</span>(period, kExpeditedRefreshPeriod);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    _scheduleRefresh(_state-&gt;now() + period, lk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+
+
+<h2 id="探测方式"><a href="#探测方式" class="headerlink" title="探测方式"></a>探测方式</h2><p>探测的核心 就是发送 <strong>isMaster()</strong> 命令并处理返回结果。</p>
+<p>探测的中间状态记录在上文描述的 <strong>ScanState</strong> 中，主要持有几个 成员 来实现：</p>
+<ul>
+<li><strong>hostsToScan</strong> : 待执行队列</li>
+<li><strong>possibleNodes</strong> :     非primary节点返回的node集合</li>
+<li><strong>waitingFor</strong> : 已经发送命令，等待返回的集合</li>
+<li><strong>triedHosts</strong> : 已经下发isMaster命令的集合</li>
+</ul>
+<p>探测过程有一个简单的状态机：<strong>CONTACT_HOST</strong>、<strong>WAIT</strong>、<strong>DONE</strong>，基于上面描述的 ScanState 持有的几个成员来判断：</p>
+<ul>
+<li><strong>CONTACT_HOST</strong> : 链接当前实例。如果 <strong>hostsToScan</strong> 中有 host，则会返回该 host 并标记状态为 <strong>CONTACT_HOST</strong></li>
+<li><strong>WAIT</strong> : 等待 response 。如果 <strong>hostsToScan</strong> 为空，而 <strong>waitingFor</strong> 不为空则标记为 WAIT 状态</li>
+<li><strong>DONE</strong> : Refresh 完成。如果 <code>_scan != _set-&gt;currentScan</code> 或者 <strong>hostsToScan</strong> &amp; <strong>waitingFor</strong> 均为空，则为 <strong>DONE</strong> 状态</li>
+</ul>
+<p>状态流转都在<code>getNextStep</code>中实现，用于<code>scheduleNetworkRequests</code>调度流转。</p>
+<p><code>IsMasterReply</code> : 记录isMaster必要的返回信息</p>
+<h3 id="请求下发"><a href="#请求下发" class="headerlink" title="请求下发"></a>请求下发</h3><p><code>scheduleNetworkRequests</code> 通过 <code>getNextStep</code> 依次从 <strong>hostsToScan</strong> 拿到一个host信息，并将 host 信息插入到 <strong>waitingFor</strong> 及 <strong>triedHosts</strong> 这 2 个 set 中。然后针对这个 host 调用 <code>scheduleIsMaster</code> </p>
+<p><code>scheduleIsMaster</code> 构建一个 isMaster 的request ，提交给 executor ，并注册回调：</p>
+<ul>
+<li>如果当前 Refresher 的 <code>_scan</code> 和 <code>_set-&gt;currentScan</code> 不同，则忽略返回结果</li>
+<li>如果返回结果是 ok，则调用 <code>receivedIsMaster</code>；否则调用 <code>failedHost</code></li>
+</ul>
+<h3 id="response处理"><a href="#response处理" class="headerlink" title="response处理"></a>response处理</h3><p><code>receivedIsMaster</code> : 将 host 从 waitingFor 中清理掉，然后构建一个 <code>IsMasterReply</code></p>
+<ul>
+<li>如果 <code>IsMasterReply</code> 的结果不是 ok ， 则会标记当前 host 为 fail</li>
+<li>如果 reply 中 setName 和 _set 中的 name 不匹配，则会标记当前 host 为 fail</li>
+<li>如果 reply 声明自己是 primary 节点， 则会调用 <code>receivedIsMasterFromMaster</code></li>
+<li>找到 primary 节点以后的 reply 处理： 将 reply 更新到对应的 <code>_set</code> 的 node 上，并在 notify 中判断是否有已经满足 <code>_set-&gt;waiter</code> 的 promise，有则返回</li>
+<li>未找到 primary 节点前的 reply 处理： 将 reply 的 member 全部加到 <strong>possibleNodes</strong> 中，如果在 reply 中声明了 primary 节点的地址且该 primary </li>
+<li>在 <strong>triedHosts</strong> 中，则将该节点重新添加会 <strong>hostsToScan</strong>。然后将该 reply 记录到 <strong>unconfirmedReplies</strong> 中</li>
+</ul>
+<p><code>receivedIsMasterFromMaster</code> 处理逻辑比较多，简单整理了下：</p>
+<ul>
+<li>有效性判断：判断 <code>configVersion</code> / <code>electionId</code> 的有效性</li>
+<li>状态存储：将 reply 的结果更新到 <code>SetState</code> 中。更新nodes / seedNodes / seedConnStr / workingConnstr</li>
+<li>清理<code>ScanState</code> 中记录的信息：<strong>triedHost</strong> / <strong>waiitingFor</strong> / <strong>unconfirmedReplies</strong></li>
+<li>如果 primary 有变化，则会通知所有的 listener 状态变更。</li>
+</ul>
+<p><code>failedHost</code> : 将 host从 <strong>waitingFor</strong> 中移除，并将node标记为 fail</p>
+<p>无论<code>receivedIsMaster</code> 还是 <code>failedHost</code> 执行完成后，都会调用 <code>scheduleNetworkRequests</code> 重新调度（可能有新加入 <strong>hostsToScan</strong> 的节点）</p>
+<h2 id="周边类"><a href="#周边类" class="headerlink" title="周边类"></a>周边类</h2><p><code>ReplicaSetMonitorManager</code> 是负责 <code>ReplicaSetMonitor</code> 的管理类，维护一个 map 结构 （记录 setName 和 <code>ReplicaSetMonitor</code>），一个<code>TaskExecutor</code> 用于所有 <code>ReplicaSetMonitor</code> 命令执行，以及一个<code>ReplicaSetChangeNotifier</code></p>
+
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+      <div>
+        <div style="padding: 10px 0; margin: 20px auto; width: 90%; text-align: center;">
+  <div>坚持原创技术分享，您的支持将鼓励我继续创作！</div>
+  <button id="rewardButton" disable="enable" onclick="var qr = document.getElementById('QR'); if (qr.style.display === 'none') {qr.style.display='block';} else {qr.style.display='none'}">
+    <span>打赏</span>
+  </button>
+  <div id="QR" style="display: none;">
+
+    
+      <div id="wechat" style="display: inline-block">
+        <img id="wechat_qr" src="/images/wechat.jpg" alt="wangxin201492 微信支付"/>
+        <p>微信支付</p>
+      </div>
+    
+
+    
+      <div id="alipay" style="display: inline-block">
+        <img id="alipay_qr" src="/images/alipay.jpg" alt="wangxin201492 支付宝"/>
+        <p>支付宝</p>
+      </div>
+    
+
+    
+
+  </div>
+</div>
+
+      </div>
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/MongoDB-OTT/" rel="tag"># MongoDB-OTT</a>
+          
+            <a href="/tags/MongoDB-ReplicaSetMonitor/" rel="tag"># MongoDB:ReplicaSetMonitor</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/MongoDB/command/serverStatus/MongoDB-request-counter/" rel="next" title="MongoDB 请求计数逻辑">
+                <i class="fa fa-chevron-left"></i> MongoDB 请求计数逻辑
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/MongoDB/MongoDB-Timer/" rel="prev" title="MongoDB 源码中定时器机制">
+                MongoDB 源码中定时器机制 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">wangxin201492</p>
+              <p class="site-description motion-element" itemprop="description">my blogs</p>
+          </div>
+
+          <nav class="site-state motion-element">
+
+            
+              <div class="site-state-item site-state-posts">
+              
+                <a href="/archives/">
+              
+                  <span class="site-state-item-count">12</span>
+                  <span class="site-state-item-name">日志</span>
+                </a>
+              </div>
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-categories">
+                <a href="/categories/index.html">
+                  <span class="site-state-item-count">12</span>
+                  <span class="site-state-item-name">分类</span>
+                </a>
+              </div>
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-tags">
+                <a href="/tags/index.html">
+                  <span class="site-state-item-count">18</span>
+                  <span class="site-state-item-name">标签</span>
+                </a>
+              </div>
+            
+
+          </nav>
+
+          
+
+          
+            <div class="links-of-author motion-element">
+                
+                  <span class="links-of-author-item">
+                    <a href="https://github.com/wangxin201492" target="_blank" title="GitHub">
+                      
+                        <i class="fa fa-fw fa-github"></i>GitHub</a>
+                  </span>
+                
+                  <span class="links-of-author-item">
+                    <a href="mailto:wangxin201492@sina.com" target="_blank" title="E-Mail">
+                      
+                        <i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+                  </span>
+                
+            </div>
+          
+
+          
+          
+
+          
+          
+
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#探测目标-shard-要求"><span class="nav-number">1.</span> <span class="nav-text">探测目标 shard 要求</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#探测触发"><span class="nav-number">2.</span> <span class="nav-text">探测触发</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#定期探测"><span class="nav-number">2.1.</span> <span class="nav-text">定期探测</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#按需探测"><span class="nav-number">2.2.</span> <span class="nav-text">按需探测</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#探测方式"><span class="nav-number">3.</span> <span class="nav-text">探测方式</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#请求下发"><span class="nav-number">3.1.</span> <span class="nav-text">请求下发</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#response处理"><span class="nav-number">3.2.</span> <span class="nav-text">response处理</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#周边类"><span class="nav-number">4.</span> <span class="nav-text">周边类</span></a></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">wangxin201492</span>
+
+  
+</div>
+
+
+  <div class="powered-by">由 <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a> 强力驱动</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/iissnan/hexo-theme-next">NexT.Pisces</a> v5.1.4</div>
+
+
+
+
+        
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/fastclick/lib/fastclick.min.js?v=1.0.6"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery_lazyload/jquery.lazyload.js?v=1.9.7"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/fancybox/source/jquery.fancybox.pack.js?v=2.1.5"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=5.1.4"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=5.1.4"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=5.1.4"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=5.1.4"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.1.4"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.1.4"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=5.1.4"></script>
+
+
+
+  
+
+
+  
+
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>

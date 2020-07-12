@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next pisces use-motion" lang="zh-Hans">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+  <link href="/lib/fancybox/source/jquery.fancybox.css?v=2.1.5" rel="stylesheet" type="text/css" />
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=5.1.4" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=5.1.4">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=5.1.4">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=5.1.4">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=5.1.4" color="#222">
+
+
+
+
+
+  <meta name="keywords" content="MongoDB-OTT," />
+
+
+
+
+
+
+
+
+
+
+<meta name="description" content="mongos上一个find请求堆栈主要路径是这个样子的：  #0 mongo::(anonymous namespace)::ClusterFindCmd::Invocation::run (this&#x3D;0x7f3705a8e2a0, opCtx&#x3D;0x7f37064b5c80, result&#x3D;0x7f3705b11650) at src&#x2F;mongo&#x2F;s&#x2F;commands&#x2F;cluster_find_c">
+<meta property="og:type" content="article">
+<meta property="og:title" content="MongoDB 请求计数逻辑">
+<meta property="og:url" content="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-request-counter/index.html">
+<meta property="og:site_name" content="wangxin201492">
+<meta property="og:description" content="mongos上一个find请求堆栈主要路径是这个样子的：  #0 mongo::(anonymous namespace)::ClusterFindCmd::Invocation::run (this&#x3D;0x7f3705a8e2a0, opCtx&#x3D;0x7f37064b5c80, result&#x3D;0x7f3705b11650) at src&#x2F;mongo&#x2F;s&#x2F;commands&#x2F;cluster_find_c">
+<meta property="article:published_time" content="2020-04-22T09:25:43.000Z">
+<meta property="article:modified_time" content="2020-07-12T05:25:16.866Z">
+<meta property="article:author" content="wangxin201492">
+<meta property="article:tag" content="MongoDB-OTT">
+<meta name="twitter:card" content="summary">
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Pisces',
+    version: '5.1.4',
+    sidebar: {"position":"right","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: true,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    duoshuo: {
+      userId: '0',
+      author: '博主'
+    },
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+
+  <link rel="canonical" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-request-counter/"/>
+
+
+
+
+
+  <title>MongoDB 请求计数逻辑 | wangxin201492</title>
+  
+
+
+
+
+
+  <script type="text/javascript">
+    var _hmt = _hmt || [];
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "https://hm.baidu.com/hm.js?b4b40ab284f92e7b4921a8198acda5b7";
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+  </script>
+
+
+
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-Hans">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-right page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/"  class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">wangxin201492</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle"></p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        <li class="menu-item menu-item-home">
+          <a href="/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            首页
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-tags">
+          <a href="/tags/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            标签
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-categories">
+          <a href="/categories/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            分类
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            归档
+          </a>
+        </li>
+      
+
+      
+    </ul>
+  
+
+  
+</nav>
+
+
+
+ </div>
+    </header>
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-request-counter/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">MongoDB 请求计数逻辑</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-04-22T17:25:43+08:00">
+                2020-04-22
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/command/" itemprop="url" rel="index">
+                    <span itemprop="name">command</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/command/serverStatus/" itemprop="url" rel="index">
+                    <span itemprop="name">serverStatus</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>mongos上一个find请求堆栈主要路径是这个样子的：</p>
+<ul>
+<li>#0 mongo::(anonymous namespace)::<strong>ClusterFindCmd::Invocation::run</strong> (this=0x7f3705a8e2a0, opCtx=0x7f37064b5c80, result=0x7f3705b11650) at src/mongo/s/commands/cluster_find_cmd.cpp:205</li>
+<li>#1 0x00007f3701fae26a in mongo::(anonymous namespace)::<strong>execCommandClient</strong> (opCtx=0x7f37064b5c80, invocation=0x7f3705a8e2a0, request=…, result=0x7f3705b11650) at src/mongo/s/commands/strategy.cpp:303</li>
+<li>#2 0x00007f3701faff38 in mongo::(anonymous namespace)::runCommand (opCtx=0x7f37064b5c80, request=…, opType=mongo::dbMsg, replyBuilder=0x7f3705b11650, errorBuilder=0x7f36eeb1adc0) at src/mongo/s/commands/strategy.cpp:489</li>
+<li>#3 0x00007f3701fb1f76 in mongo::Strategy::clientCommand (opCtx=0x7f37064b5c80, m=…) at src/mongo/s/commands/strategy.cpp:800</li>
+<li>#4 0x00007f3701e243cc in mongo::ServiceEntryPointMongos::handleRequest (this=0x7f37058f6680, opCtx=0x7f37064b5c80, message=…) at src/mongo/s/service_entry_point_mongos.cpp:95</li>
+<li>#5 0x00007f3701e7d5e2 in mongo::<strong>ServiceStateMachine::_processMessage</strong> (this=0x7f3705ad6010, guard=…) at src/mongo/transport/service_state_machine.cpp:452</li>
+</ul>
+<p><code>db.serverStatus()</code> 输出结果中有3个地方对请求进行了计数，这里简单整理下</p>
+<ol>
+<li><code>db.serverStatus().network.numRequests</code>(简称<strong>requests计数</strong>） – 对应在堆栈中#5（即 <code>ServiceStateMachine::_processMessage()</code>）进行计数。表示<strong>接收的网络包数量</strong></li>
+<li><code>db.serverStatus().metrics.commands.*.total &amp; failed</code>（简称<strong>metrics计数</strong>） – 对应在堆栈中#1（即 <code>execCommandClient()</code> ）进行计数。表示<strong>不同命令执行的次数</strong></li>
+<li><code>db.serverStatus().opcounters</code>（简称<strong>opcounters计数</strong>） – 对应在堆栈中#0（即 <code>Invocation::run()</code>）即进行计数。表示<strong>requests计数</strong></li>
+</ol>
+<p><strong>requests计数</strong>和<strong>metrics计数</strong>的逻辑是固定的，而对于opcounters计数会根据请求的不同有一定gap。</p>
+<h2 id="opcounters-计数分析"><a href="#opcounters-计数分析" class="headerlink" title="opcounters 计数分析"></a>opcounters 计数分析</h2><p><code>db.serverStatus().opcounters</code> 包含如下结果：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">mongos&gt; db.serverStatus().opcounters</span><br><span class="line">&#123;</span><br><span class="line">        <span class="attr">"insert"</span> : NumberLong(<span class="number">6</span>),</span><br><span class="line">        <span class="attr">"query"</span> : NumberLong(<span class="number">1</span>),</span><br><span class="line">        <span class="attr">"update"</span> : NumberLong(<span class="number">2</span>),</span><br><span class="line">        <span class="attr">"delete"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">        <span class="attr">"getmore"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">        <span class="attr">"command"</span> : NumberLong(<span class="number">75</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>在<code>ServiceEntryPointMongos::handleRequest()</code>中对计数场景进行了区分：</p>
+<h3 id="计数场景1：-opcode-OP-MSG-或者-opcode-OP-QUERY-且-namespace的collection部分-“-cmd”"><a href="#计数场景1：-opcode-OP-MSG-或者-opcode-OP-QUERY-且-namespace的collection部分-“-cmd”" class="headerlink" title="计数场景1：(opcode == OP_MSG) 或者 (opcode == OP_QUERY 且 namespace的collection部分 == “$cmd”)"></a>计数场景1：(<code>opcode == OP_MSG</code>) 或者 (<code>opcode == OP_QUERY</code> 且 namespace的collection部分 == “$cmd”)</h3><p>按照上面举例的find堆栈 <code>clientCommand()</code> –&gt; <code>runCommand()</code> –&gt; <code>execCommandClient()</code> –&gt; <code>Invocation::run()</code> 依次调用。这里所有的command都会继承 Command 类，该类提供一个 <code>shouldAffectCommandCounter()</code> 返回True。</p>
+<ul>
+<li>insert / update / delete / query / getmore 请求重写了 <code>shouldAffectCommandCounter()</code> 返回 false ，在 <code>Invocation::run()</code> 中完成计数</li>
+<li>其余请求均作为 command，在 <code>execCommandClient()</code> 中完成计数</li>
+</ul>
+<h3 id="计数场景2：opcode-OP-QUERY-且-namespace的collection部分-“-cmd”"><a href="#计数场景2：opcode-OP-QUERY-且-namespace的collection部分-“-cmd”" class="headerlink" title="计数场景2：opcode == OP_QUERY 且 namespace的collection部分 != “$cmd”"></a>计数场景2：<code>opcode == OP_QUERY</code> 且 namespace的collection部分 != “$cmd”</h3><p>直接调用 <code>Strategy::queryOp()</code>， 并在其中完成计数</p>
+<h3 id="计数场景3：opcode-OP-GET-MORE"><a href="#计数场景3：opcode-OP-GET-MORE" class="headerlink" title="计数场景3：opcode == OP_GET_MORE"></a>计数场景3：<code>opcode == OP_GET_MORE</code></h3><p>直接调用 <code>Strategy::getMore()</code>，并在其中完成计数</p>
+<h3 id="计数场景4：opcode-OP-KILL-CURSORS"><a href="#计数场景4：opcode-OP-KILL-CURSORS" class="headerlink" title="计数场景4：opcode == OP_KILL_CURSORS"></a>计数场景4：<code>opcode == OP_KILL_CURSORS</code></h3><p>直接调用 <code>Strategy::killCursors()</code>，并在其中调用 <code>OpCounters::gotOp()</code></p>
+<p>gotOp 对 OP_KILL_CURSORS / OP_REPLY 不进行计数，即这两种场景不会记录在 opcounters 中</p>
+<h3 id="计数场景5：opcode-OP-INSERT-OP-UPDATE-OP-DELETE"><a href="#计数场景5：opcode-OP-INSERT-OP-UPDATE-OP-DELETE" class="headerlink" title="计数场景5：opcode == OP_INSERT / OP_UPDATE / OP_DELETE"></a>计数场景5：<code>opcode == OP_INSERT / OP_UPDATE / OP_DELETE</code></h3><p>按照场景1堆栈 <code>Strategy::writeOp()</code> –&gt; <code>runCommand()</code> –&gt; <code>execCommandClient()</code> –&gt; <code>Invocation::run()</code> 依次调用，同场景1</p>
+<h3 id="对insert-update-delete-请求的计数说明"><a href="#对insert-update-delete-请求的计数说明" class="headerlink" title="对insert / update / delete 请求的计数说明"></a>对<code>insert / update / delete</code> 请求的计数说明</h3><p>对于insert / update / delete 请求，会在 <code>Invocation::run()</code> 中完成计数，但是对这3个请求的处理不是简单的+1完成的。增加的数量为 <code>batchedRequest.sizeWriteOps()</code>。由于3.6版本中新增了 OP_MSG 的协议类型，支持这3种请求携带多条数据：即 OP_MSG 协议中 <strong>kind=Document Sequence 的 sections 字段</strong>。这3种请求的具体实现，都重写了 Command 类提供的 parse 函数，基于原有的 request 构建了一个额外的 <code>BatchedCommandRequest</code> ，调用的是 <code>BatchedCommandRequest::parseInsert()</code> 函数。</p>
+<p>实际执行验证来看：</p>
+<p>通过insert插入一个BSONArray，opcounters.insert 会增加 array 的 size。和上面的分析是对齐的</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">mongos&gt; db.serverStatus().opcounters</span><br><span class="line">&#123;</span><br><span class="line">	<span class="attr">"insert"</span> : NumberLong(<span class="number">2</span>),</span><br><span class="line">	<span class="attr">"query"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"update"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"delete"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"getmore"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"command"</span> : NumberLong(<span class="number">58</span>)</span><br><span class="line">&#125;</span><br><span class="line">mongos&gt; db.collection.insert([&#123;name: "B"&#125;,&#123;name: "C"&#125;])</span><br><span class="line">BulkWriteResult(&#123;</span><br><span class="line">	"writeErrors" : [ ],</span><br><span class="line">	"writeConcernErrors" : [ ],</span><br><span class="line">	"nInserted" : 2,</span><br><span class="line">	"nUpserted" : 0,</span><br><span class="line">	"nMatched" : 0,</span><br><span class="line">	"nModified" : 0,</span><br><span class="line">	"nRemoved" : 0,</span><br><span class="line">	"upserted" : [ ]</span><br><span class="line">&#125;)</span><br><span class="line">mongos&gt; db.serverStatus().opcounters</span><br><span class="line">&#123;</span><br><span class="line">	<span class="attr">"insert"</span> : NumberLong(<span class="number">4</span>),</span><br><span class="line">	<span class="attr">"query"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"update"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"delete"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"getmore"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"command"</span> : NumberLong(<span class="number">62</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>而 <code>db.colleciton.update()</code> / <code>db.colleciton.delete()</code> 并不像 <code>insert()</code> 一样支持多条记录的修改。这几个函数都是被 mongo shell 封装过的，具体通过 insert / update / delete 进行多条document修改可以参考<a href="https://docs.mongodb.com/manual/reference/command/nav-crud/" target="_blank" rel="noopener">官网文档</a>中提供的命令，分别对应有 inserts / updates / deletes 字段支持多条document修改</p>
+<p><strong>Notice:</strong> 按照上面的分析，对于opcode == OP_QUERY / OP_GET_MORE / OP_KILL_CURSORS 的场景，对metrics计数应该是有缺失的。</p>
+
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+      <div>
+        <div style="padding: 10px 0; margin: 20px auto; width: 90%; text-align: center;">
+  <div>坚持原创技术分享，您的支持将鼓励我继续创作！</div>
+  <button id="rewardButton" disable="enable" onclick="var qr = document.getElementById('QR'); if (qr.style.display === 'none') {qr.style.display='block';} else {qr.style.display='none'}">
+    <span>打赏</span>
+  </button>
+  <div id="QR" style="display: none;">
+
+    
+      <div id="wechat" style="display: inline-block">
+        <img id="wechat_qr" src="/images/wechat.jpg" alt="wangxin201492 微信支付"/>
+        <p>微信支付</p>
+      </div>
+    
+
+    
+      <div id="alipay" style="display: inline-block">
+        <img id="alipay_qr" src="/images/alipay.jpg" alt="wangxin201492 支付宝"/>
+        <p>支付宝</p>
+      </div>
+    
+
+    
+
+  </div>
+</div>
+
+      </div>
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/MongoDB-OTT/" rel="tag"># MongoDB-OTT</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/MongoDB/command/serverStatus/MongoDB-serverStatus/" rel="next" title="MongoDB serverStatus实现原理">
+                <i class="fa fa-chevron-left"></i> MongoDB serverStatus实现原理
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/MongoDB/MongoDB-ReplicaSetMonitor/" rel="prev" title="MongoDB ReplicaSetMonitor对shard探测机制">
+                MongoDB ReplicaSetMonitor对shard探测机制 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">wangxin201492</p>
+              <p class="site-description motion-element" itemprop="description">my blogs</p>
+          </div>
+
+          <nav class="site-state motion-element">
+
+            
+              <div class="site-state-item site-state-posts">
+              
+                <a href="/archives/">
+              
+                  <span class="site-state-item-count">12</span>
+                  <span class="site-state-item-name">日志</span>
+                </a>
+              </div>
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-categories">
+                <a href="/categories/index.html">
+                  <span class="site-state-item-count">12</span>
+                  <span class="site-state-item-name">分类</span>
+                </a>
+              </div>
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-tags">
+                <a href="/tags/index.html">
+                  <span class="site-state-item-count">18</span>
+                  <span class="site-state-item-name">标签</span>
+                </a>
+              </div>
+            
+
+          </nav>
+
+          
+
+          
+            <div class="links-of-author motion-element">
+                
+                  <span class="links-of-author-item">
+                    <a href="https://github.com/wangxin201492" target="_blank" title="GitHub">
+                      
+                        <i class="fa fa-fw fa-github"></i>GitHub</a>
+                  </span>
+                
+                  <span class="links-of-author-item">
+                    <a href="mailto:wangxin201492@sina.com" target="_blank" title="E-Mail">
+                      
+                        <i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+                  </span>
+                
+            </div>
+          
+
+          
+          
+
+          
+          
+
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#opcounters-计数分析"><span class="nav-number">1.</span> <span class="nav-text">opcounters 计数分析</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#计数场景1：-opcode-OP-MSG-或者-opcode-OP-QUERY-且-namespace的collection部分-“-cmd”"><span class="nav-number">1.1.</span> <span class="nav-text">计数场景1：(opcode &#x3D;&#x3D; OP_MSG) 或者 (opcode &#x3D;&#x3D; OP_QUERY 且 namespace的collection部分 &#x3D;&#x3D; “$cmd”)</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#计数场景2：opcode-OP-QUERY-且-namespace的collection部分-“-cmd”"><span class="nav-number">1.2.</span> <span class="nav-text">计数场景2：opcode &#x3D;&#x3D; OP_QUERY 且 namespace的collection部分 !&#x3D; “$cmd”</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#计数场景3：opcode-OP-GET-MORE"><span class="nav-number">1.3.</span> <span class="nav-text">计数场景3：opcode &#x3D;&#x3D; OP_GET_MORE</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#计数场景4：opcode-OP-KILL-CURSORS"><span class="nav-number">1.4.</span> <span class="nav-text">计数场景4：opcode &#x3D;&#x3D; OP_KILL_CURSORS</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#计数场景5：opcode-OP-INSERT-OP-UPDATE-OP-DELETE"><span class="nav-number">1.5.</span> <span class="nav-text">计数场景5：opcode &#x3D;&#x3D; OP_INSERT &#x2F; OP_UPDATE &#x2F; OP_DELETE</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#对insert-update-delete-请求的计数说明"><span class="nav-number">1.6.</span> <span class="nav-text">对insert &#x2F; update &#x2F; delete 请求的计数说明</span></a></li></ol></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">wangxin201492</span>
+
+  
+</div>
+
+
+  <div class="powered-by">由 <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a> 强力驱动</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/iissnan/hexo-theme-next">NexT.Pisces</a> v5.1.4</div>
+
+
+
+
+        
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/fastclick/lib/fastclick.min.js?v=1.0.6"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery_lazyload/jquery.lazyload.js?v=1.9.7"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/fancybox/source/jquery.fancybox.pack.js?v=2.1.5"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=5.1.4"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=5.1.4"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=5.1.4"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=5.1.4"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.1.4"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.1.4"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=5.1.4"></script>
+
+
+
+  
+
+
+  
+
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>
