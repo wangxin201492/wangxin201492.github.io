@@ -1218,210 +1218,6 @@
   
   
   <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-request-counter/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/MongoDB/command/serverStatus/MongoDB-request-counter/" itemprop="url">MongoDB 请求计数逻辑</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-04-22T17:25:43+08:00">
-                2020-04-22
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
-                    <span itemprop="name">MongoDB</span>
-                  </a>
-                </span>
-
-                
-                
-                  ， 
-                
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/MongoDB/command/" itemprop="url" rel="index">
-                    <span itemprop="name">command</span>
-                  </a>
-                </span>
-
-                
-                
-                  ， 
-                
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/MongoDB/command/serverStatus/" itemprop="url" rel="index">
-                    <span itemprop="name">serverStatus</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <p>mongos上一个find请求堆栈主要路径是这个样子的：</p>
-<ul>
-<li>#0 mongo::(anonymous namespace)::<strong>ClusterFindCmd::Invocation::run</strong> (this=0x7f3705a8e2a0, opCtx=0x7f37064b5c80, result=0x7f3705b11650) at src/mongo/s/commands/cluster_find_cmd.cpp:205</li>
-<li>#1 0x00007f3701fae26a in mongo::(anonymous namespace)::<strong>execCommandClient</strong> (opCtx=0x7f37064b5c80, invocation=0x7f3705a8e2a0, request=…, result=0x7f3705b11650) at src/mongo/s/commands/strategy.cpp:303</li>
-<li>#2 0x00007f3701faff38 in mongo::(anonymous namespace)::runCommand (opCtx=0x7f37064b5c80, request=…, opType=mongo::dbMsg, replyBuilder=0x7f3705b11650, errorBuilder=0x7f36eeb1adc0) at src/mongo/s/commands/strategy.cpp:489</li>
-<li>#3 0x00007f3701fb1f76 in mongo::Strategy::clientCommand (opCtx=0x7f37064b5c80, m=…) at src/mongo/s/commands/strategy.cpp:800</li>
-<li>#4 0x00007f3701e243cc in mongo::ServiceEntryPointMongos::handleRequest (this=0x7f37058f6680, opCtx=0x7f37064b5c80, message=…) at src/mongo/s/service_entry_point_mongos.cpp:95</li>
-<li>#5 0x00007f3701e7d5e2 in mongo::<strong>ServiceStateMachine::_processMessage</strong> (this=0x7f3705ad6010, guard=…) at src/mongo/transport/service_state_machine.cpp:452</li>
-</ul>
-<p><code>db.serverStatus()</code> 输出结果中有3个地方对请求进行了计数，这里简单整理下</p>
-<ol>
-<li><code>db.serverStatus().network.numRequests</code>(简称<strong>requests计数</strong>） – 对应在堆栈中#5（即 <code>ServiceStateMachine::_processMessage()</code>）进行计数。表示<strong>接收的网络包数量</strong></li>
-<li><code>db.serverStatus().metrics.commands.*.total &amp; failed</code>（简称<strong>metrics计数</strong>） – 对应在堆栈中#1（即 <code>execCommandClient()</code> ）进行计数。表示<strong>不同命令执行的次数</strong></li>
-<li><code>db.serverStatus().opcounters</code>（简称<strong>opcounters计数</strong>） – 对应在堆栈中#0（即 <code>Invocation::run()</code>）即进行计数。表示<strong>requests计数</strong></li>
-</ol>
-<p><strong>requests计数</strong>和<strong>metrics计数</strong>的逻辑是固定的，而对于opcounters计数会根据请求的不同有一定gap。</p>
-<h2 id="opcounters-计数分析"><a href="#opcounters-计数分析" class="headerlink" title="opcounters 计数分析"></a>opcounters 计数分析</h2><p><code>db.serverStatus().opcounters</code> 包含如下结果：</p>
-<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">mongos&gt; db.serverStatus().opcounters</span><br><span class="line">&#123;</span><br><span class="line">        <span class="attr">"insert"</span> : NumberLong(<span class="number">6</span>),</span><br><span class="line">        <span class="attr">"query"</span> : NumberLong(<span class="number">1</span>),</span><br><span class="line">        <span class="attr">"update"</span> : NumberLong(<span class="number">2</span>),</span><br><span class="line">        <span class="attr">"delete"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">        <span class="attr">"getmore"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">        <span class="attr">"command"</span> : NumberLong(<span class="number">75</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-
-
-<p>在<code>ServiceEntryPointMongos::handleRequest()</code>中对计数场景进行了区分：</p>
-<h3 id="计数场景1：-opcode-OP-MSG-或者-opcode-OP-QUERY-且-namespace的collection部分-“-cmd”"><a href="#计数场景1：-opcode-OP-MSG-或者-opcode-OP-QUERY-且-namespace的collection部分-“-cmd”" class="headerlink" title="计数场景1：(opcode == OP_MSG) 或者 (opcode == OP_QUERY 且 namespace的collection部分 == “$cmd”)"></a>计数场景1：(<code>opcode == OP_MSG</code>) 或者 (<code>opcode == OP_QUERY</code> 且 namespace的collection部分 == “$cmd”)</h3><p>按照上面举例的find堆栈 <code>clientCommand()</code> –&gt; <code>runCommand()</code> –&gt; <code>execCommandClient()</code> –&gt; <code>Invocation::run()</code> 依次调用。这里所有的command都会继承 Command 类，该类提供一个 <code>shouldAffectCommandCounter()</code> 返回True。</p>
-<ul>
-<li>insert / update / delete / query / getmore 请求重写了 <code>shouldAffectCommandCounter()</code> 返回 false ，在 <code>Invocation::run()</code> 中完成计数</li>
-<li>其余请求均作为 command，在 <code>execCommandClient()</code> 中完成计数</li>
-</ul>
-<h3 id="计数场景2：opcode-OP-QUERY-且-namespace的collection部分-“-cmd”"><a href="#计数场景2：opcode-OP-QUERY-且-namespace的collection部分-“-cmd”" class="headerlink" title="计数场景2：opcode == OP_QUERY 且 namespace的collection部分 != “$cmd”"></a>计数场景2：<code>opcode == OP_QUERY</code> 且 namespace的collection部分 != “$cmd”</h3><p>直接调用 <code>Strategy::queryOp()</code>， 并在其中完成计数</p>
-<h3 id="计数场景3：opcode-OP-GET-MORE"><a href="#计数场景3：opcode-OP-GET-MORE" class="headerlink" title="计数场景3：opcode == OP_GET_MORE"></a>计数场景3：<code>opcode == OP_GET_MORE</code></h3><p>直接调用 <code>Strategy::getMore()</code>，并在其中完成计数</p>
-<h3 id="计数场景4：opcode-OP-KILL-CURSORS"><a href="#计数场景4：opcode-OP-KILL-CURSORS" class="headerlink" title="计数场景4：opcode == OP_KILL_CURSORS"></a>计数场景4：<code>opcode == OP_KILL_CURSORS</code></h3><p>直接调用 <code>Strategy::killCursors()</code>，并在其中调用 <code>OpCounters::gotOp()</code></p>
-<p>gotOp 对 OP_KILL_CURSORS / OP_REPLY 不进行计数，即这两种场景不会记录在 opcounters 中</p>
-<h3 id="计数场景5：opcode-OP-INSERT-OP-UPDATE-OP-DELETE"><a href="#计数场景5：opcode-OP-INSERT-OP-UPDATE-OP-DELETE" class="headerlink" title="计数场景5：opcode == OP_INSERT / OP_UPDATE / OP_DELETE"></a>计数场景5：<code>opcode == OP_INSERT / OP_UPDATE / OP_DELETE</code></h3><p>按照场景1堆栈 <code>Strategy::writeOp()</code> –&gt; <code>runCommand()</code> –&gt; <code>execCommandClient()</code> –&gt; <code>Invocation::run()</code> 依次调用，同场景1</p>
-<h3 id="对insert-update-delete-请求的计数说明"><a href="#对insert-update-delete-请求的计数说明" class="headerlink" title="对insert / update / delete 请求的计数说明"></a>对<code>insert / update / delete</code> 请求的计数说明</h3><p>对于insert / update / delete 请求，会在 <code>Invocation::run()</code> 中完成计数，但是对这3个请求的处理不是简单的+1完成的。增加的数量为 <code>batchedRequest.sizeWriteOps()</code>。由于3.6版本中新增了 OP_MSG 的协议类型，支持这3种请求携带多条数据：即 OP_MSG 协议中 <strong>kind=Document Sequence 的 sections 字段</strong>。这3种请求的具体实现，都重写了 Command 类提供的 parse 函数，基于原有的 request 构建了一个额外的 <code>BatchedCommandRequest</code> ，调用的是 <code>BatchedCommandRequest::parseInsert()</code> 函数。</p>
-<p>实际执行验证来看：</p>
-<p>通过insert插入一个BSONArray，opcounters.insert 会增加 array 的 size。和上面的分析是对齐的</p>
-<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">mongos&gt; db.serverStatus().opcounters</span><br><span class="line">&#123;</span><br><span class="line">	<span class="attr">"insert"</span> : NumberLong(<span class="number">2</span>),</span><br><span class="line">	<span class="attr">"query"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"update"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"delete"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"getmore"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"command"</span> : NumberLong(<span class="number">58</span>)</span><br><span class="line">&#125;</span><br><span class="line">mongos&gt; db.collection.insert([&#123;name: "B"&#125;,&#123;name: "C"&#125;])</span><br><span class="line">BulkWriteResult(&#123;</span><br><span class="line">	"writeErrors" : [ ],</span><br><span class="line">	"writeConcernErrors" : [ ],</span><br><span class="line">	"nInserted" : 2,</span><br><span class="line">	"nUpserted" : 0,</span><br><span class="line">	"nMatched" : 0,</span><br><span class="line">	"nModified" : 0,</span><br><span class="line">	"nRemoved" : 0,</span><br><span class="line">	"upserted" : [ ]</span><br><span class="line">&#125;)</span><br><span class="line">mongos&gt; db.serverStatus().opcounters</span><br><span class="line">&#123;</span><br><span class="line">	<span class="attr">"insert"</span> : NumberLong(<span class="number">4</span>),</span><br><span class="line">	<span class="attr">"query"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"update"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"delete"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"getmore"</span> : NumberLong(<span class="number">0</span>),</span><br><span class="line">	<span class="attr">"command"</span> : NumberLong(<span class="number">62</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-
-
-<p>而 <code>db.colleciton.update()</code> / <code>db.colleciton.delete()</code> 并不像 <code>insert()</code> 一样支持多条记录的修改。这几个函数都是被 mongo shell 封装过的，具体通过 insert / update / delete 进行多条document修改可以参考<a href="https://docs.mongodb.com/manual/reference/command/nav-crud/" target="_blank" rel="noopener">官网文档</a>中提供的命令，分别对应有 inserts / updates / deletes 字段支持多条document修改</p>
-<p><strong>Notice:</strong> 按照上面的分析，对于opcode == OP_QUERY / OP_GET_MORE / OP_KILL_CURSORS 的场景，对metrics计数应该是有缺失的。</p>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-serverStatus/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -2613,6 +2409,250 @@
 
 
     
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/shell/shell-find/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/shell/shell-find/" itemprop="url">【shell】再看一眼find--find使用中遇到的问题分析</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-08-15T20:01:48+08:00">
+                2015-08-15
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/shell/" itemprop="url" rel="index">
+                    <span itemprop="name">shell</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="1-简单find命令"><a href="#1-简单find命令" class="headerlink" title="1 简单find命令"></a>1 简单find命令</h2><h3 id="1-1-目录结构"><a href="#1-1-目录结构" class="headerlink" title="1.1 目录结构"></a>1.1 目录结构</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">代码1</span><br><span class="line">$ tree</span><br><span class="line">.</span><br><span class="line">|-- 2.log</span><br><span class="line">`-- backup</span><br><span class="line">    `-- 1.log</span><br><span class="line"></span><br><span class="line">3 directories, 0 files</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-2-简单的find命令"><a href="#1-2-简单的find命令" class="headerlink" title="1.2 简单的find命令"></a>1.2 简单的find命令</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">代码2</span><br><span class="line">$ find -path ./backup</span><br><span class="line">./backup</span><br></pre></td></tr></table></figure>
+
+<h3 id="1-3-错误的通配符使用"><a href="#1-3-错误的通配符使用" class="headerlink" title="1.3 错误的通配符使用"></a>1.3 错误的通配符使用</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">代码3</span><br><span class="line">$ mkdir backup123</span><br><span class="line">$ find -path ./backup*</span><br><span class="line">find: paths must precede expression</span><br><span class="line">Usage: find [path...] [expression]</span><br></pre></td></tr></table></figure>
+
+<p><code>find</code>命令报错：路径必须先表达。问题分析（引自：<a href="http://www.cnblogs.com/baibaluo/archive/2012/08/16/2642403.html" target="_blank" rel="noopener">http://www.cnblogs.com/baibaluo/archive/2012/08/16/2642403.html</a>）:</p>
+<p>当目录下存在多个<code>backup*</code>，shell命令变成<code>find -path backup backup123</code>.此时，<code>-name</code>后面有2个匹配字符，shell报错。</p>
+<p><strong>解决办法</strong>：-path(-name)匹配的字符串已经要用单引号，或者双引号引住。</p>
+<h3 id="1-4-正确的通配符写法"><a href="#1-4-正确的通配符写法" class="headerlink" title="1.4 正确的通配符写法"></a>1.4 正确的通配符写法</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">代码4</span><br><span class="line">$ find -path <span class="string">'./backup*'</span></span><br><span class="line">./backup</span><br><span class="line">./backup/1.log</span><br><span class="line">./backup123</span><br></pre></td></tr></table></figure>
+
+<p>此时，命令运行正确！</p>
+<h2 id="2-find多条件"><a href="#2-find多条件" class="headerlink" title="2 find多条件"></a>2 find多条件</h2><p><code>expr1 expr2 -o expr3</code> 等同于 <code>expr1 -a expr2 -o expr3</code>.与其他语言中的<strong>与或非</strong>类似。并且是<strong>短路求值</strong></p>
+<h3 id="2-1-find多条件尝试-与"><a href="#2-1-find多条件尝试-与" class="headerlink" title="2.1 find多条件尝试:与"></a>2.1 find多条件尝试:与</h3><pre><code>代码5
+$ find -path ./backup -name &apos;*.log&apos;
+$</code></pre><p>没有任何返回结果。该语句的含义是：路径是path，并且名字是以.log结尾的文件。显然，并不存在。</p>
+<p>本语句实际上是想查找，backup下所有的以.log结尾的文件。应是：</p>
+<ol>
+<li><code>find -path &#39;./backup*&#39; -name &#39;*.log&#39;</code></li>
+</ol>
+<h3 id="2-2-find多条件尝试-或"><a href="#2-2-find多条件尝试-或" class="headerlink" title="2.2 find多条件尝试:或"></a>2.2 find多条件尝试:或</h3><pre><code>代码6
+$ find -path &apos;./backup*&apos; -o -name &apos;*.log&apos;
+./backup
+./backup/1.log
+./2.log
+./backup123</code></pre><p>到这个地方，<code>-a</code> 和 <code>-o</code>的体会已经一目了然了吧。这条命令展示了在backup*下的所有文件和以.log结尾的所有文件。</p>
+<h2 id="3-prune的体会"><a href="#3-prune的体会" class="headerlink" title="3 -prune的体会"></a>3 <code>-prune</code>的体会</h2><p>贴上这样的几条<code>shell</code>命令，请先自行体会：</p>
+<pre><code>代码7
+$ find -path &apos;./backup*&apos;
+./backup
+./backup/1.log
+./backup123
+$ find -path &apos;./backup*&apos; -prune
+./backup
+./backup123</code></pre><h3 id="3-1-prune的基本使用"><a href="#3-1-prune的基本使用" class="headerlink" title="3.1 prune的基本使用"></a>3.1 <code>prune</code>的基本使用</h3><p><code>-prune</code>在man中是这么说的</p>
+<blockquote>
+<p>If -depth is not given, true; do not descend the current directory.<br>If -depth is given, false; no effect.</p>
+</blockquote>
+<p>如果<code>find</code>语句中存在-depth选项，那么<code>-prune</code>将会被忽略。否则，<code>-prune</code>将声明不展开当前路径。</p>
+<p>这样在上述的1、2条命令中，由于<code>-prune</code>选项的存在，致使backup路径没有展开。所以1.log没有在打印列表中。</p>
+<p>我们再次做这样的尝试：</p>
+<pre><code>代码8
+$ touch backup123/3.log
+$ find -path &apos;./backup*&apos; -prune
+./backup
+./backup123
+$ find -path &apos;./backup*&apos;
+./backup
+./backup/1.log
+./backup123
+./backup123/3.log</code></pre><p>打印的结果和预期是一样的。</p>
+<p>按照上述<strong>2 find多条件</strong>中说道的那样，<code>find -path &#39;./backup*&#39;</code>获得所有backup前缀的文件，然后将结果和<code>-prune</code>相<code>与</code>：其实就是判断前者的结果中是否包含<strong>指定路径</strong>的子文件(夹)。</p>
+<h3 id="3-2-prune做排除路径用"><a href="#3-2-prune做排除路径用" class="headerlink" title="3.2 prune做排除路径用"></a>3.2 <code>prune</code>做排除路径用</h3><p>而一般情况下<code>prune</code>是这样使用的</p>
+<pre><code>代码9
+$ find -path &apos;./backup*&apos; -prune -o -name &apos;*.log&apos; -print
+./2.log</code></pre><p>指代的意思是当前路径除去<code>backup*</code>文件夹外的所有<code>*.log</code>文件。</p>
+<h4 id="3-2-1-一个问题"><a href="#3-2-1-一个问题" class="headerlink" title="3.2.1 一个问题"></a>3.2.1 一个问题</h4><p>这样是如愿以偿了，但是我们执行一下这样的一条命令：</p>
+<pre><code>代码10
+$ find -path &apos;./backup*&apos; -o -name &apos;*.log&apos; -print
+./2.log</code></pre><p>返回的结果一模一样。</p>
+<h4 id="3-2-2-进一步剖析"><a href="#3-2-2-进一步剖析" class="headerlink" title="3.2.2 进一步剖析"></a>3.2.2 进一步剖析</h4><p>这个问题我们暂且搁置不论，继续来看这样的2个命令：</p>
+<pre><code>代码11
+$ find -path &apos;./backup*&apos; -prune -o -name &apos;*.log&apos;
+./backup
+./2.log
+./backup123
+$ find -path &apos;./backup*&apos;  -o -name &apos;*.log&apos;
+./backup
+./backup/1.log
+./2.log
+./backup123</code></pre><p>2个结果集中只是缺少了<code>./backup/1.log</code>，<code>-prune</code>做到的只是一个收缩路径的功能。</p>
+<p>再继续对比这2个命令和上面两个命令，缺少的是一个<code>-print</code>.其实在man里面有这样的一句话<strong>“If no expression is given, the expression ‘-print’ is used.”</strong></p>
+<p>也就是说<code>-print</code>是个默认值，那么上面2组命令实际上可以这样看待：</p>
+<table>
+<thead>
+<tr>
+<th align="center">输入命令</th>
+<th align="center">实际命令</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center"><code>find -path &#39;./backup*&#39; -o -name &#39;*.log&#39;</code></td>
+<td align="center"><code>find \( -path &#39;./backup*&#39; -o -name &#39;*.log&#39; \) -print</code></td>
+</tr>
+<tr>
+<td align="center"><code>find -path &#39;./backup*&#39; -o -name &#39;*.log&#39; -print</code></td>
+<td align="center"><code>find \( -path &#39;./backup*&#39; \) -o \( -name &#39;*.log&#39; -print \)</code></td>
+</tr>
+</tbody></table>
+<p><strong>代码9</strong> 和 <strong>代码10</strong>中的片段可以理解为打印<code>-path &#39;./backup*&#39;</code>为false 、 <code>-name &#39;*.log&#39;</code> 为true的find结果。</p>
+<p>而<strong>代码11</strong>中的片段则是将<code>-path &#39;./backup*&#39; -o -name &#39;*.log&#39;</code>过滤后所有为true的结果都打印。</p>
+<h4 id="3-2-3-总结"><a href="#3-2-3-总结" class="headerlink" title="3.2.3 总结"></a>3.2.3 总结</h4><p>那么这样看来，其实排除路径其实是将<code>-print</code>放置到了-o后面作为输出。而<code>-path &#39;./backup*&#39;</code>执行过，并且返回true，单并未被打印。</p>
+<p>那么是不是说，其实，其实，其实<code>-prune</code>并没有什么用？</p>
+<h2 id="4-总结：多一点角度看find"><a href="#4-总结：多一点角度看find" class="headerlink" title="4 总结：多一点角度看find"></a>4 总结：多一点角度看find</h2><p>其实可以认为</p>
+<ol>
+<li>find无可避免的对指定路径进行了全文搜索，默认情况下是深度优先搜索(只有在指定-depth的时候使用广度优先搜索)。</li>
+<li>find进行全文搜索以后，将结果扔到后面的过滤条件中，按照<strong>与或非</strong>的规则，逐条过滤。</li>
+<li>最终返回值为true的item被打印了出来</li>
+</ol>
+<p>试想这样一个场景，在一个java项目中，由于项目庞大，总文件数上万。想要找到最深2级目录下所有的java文件。</p>
+<pre><code>find . -name &quot;*.java&quot; -maxdepth 2
+find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令，显然第二条的执行效率会快！！！<code>-maxdepth 2</code> 极大程度的进行了一次结果过滤。</p>
+<p>那么在写find命令的时候，应该把能最大程度减小结果集的结果放到前面。</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
   </section>
 
   
@@ -2663,7 +2703,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">13</span>
+                  <span class="site-state-item-count">12</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
