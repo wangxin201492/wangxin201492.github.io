@@ -85,19 +85,19 @@
 <meta property="og:url" content="https://wangxin201492.github.io/MongoDB/sharding/splitChunk/MongoDB-sharding-troubleshoot-cacheRefreshX/index.html">
 <meta property="og:site_name" content="wangxin201492">
 <meta property="og:description" content="MongoDB sharding 实例从 3.4版本 升级到 4.0版本 以后插入性能明显降低，观察日志发现大量的 insert 请求慢日志： 12020-08-19T16:40:46.563+0800 I COMMAND [conn1528] command sdb.sColl command: insert &amp;#123; insert: &quot;sColl&quot;, xxx&amp;#125;">
-<meta property="og:image" content="https://wangxin201492.github.io/MongoDB/sharding/splitChunk/MongoDB-sharding-troubleshoot-cacheRefreshX/MongoDB-cache-refresh.png">
-<meta property="og:image" content="https://wangxin201492.github.io/MongoDB/sharding/splitChunk/MongoDB-sharding-troubleshoot-cacheRefreshX/MongoDB-splitChunk.png">
-<meta property="og:image" content="https://wangxin201492.github.io/MongoDB/sharding/splitChunk/MongoDB-sharding-troubleshoot-cacheRefreshX/MongoDB-SERVER-41480.png">
-<meta property="og:image" content="https://wangxin201492.github.io/MongoDB/sharding/splitChunk/MongoDB-sharding-troubleshoot-cacheRefreshX/MongoDB-SERVER-49233.png">
+<meta property="og:image" content="https://wangxin201492.github.io/techImages/MongoDB-cache-refresh.png">
+<meta property="og:image" content="https://wangxin201492.github.io/techImages/MongoDB-splitChunk.png">
+<meta property="og:image" content="https://wangxin201492.github.io/techImages/MongoDB-SERVER-41480.png">
+<meta property="og:image" content="https://wangxin201492.github.io/techImages/MongoDB-SERVER-49233.png">
 <meta property="article:published_time" content="2020-11-29T06:16:20.850Z">
-<meta property="article:modified_time" content="2020-11-29T06:21:47.960Z">
+<meta property="article:modified_time" content="2020-11-29T06:30:43.241Z">
 <meta property="article:author" content="wangxin201492">
 <meta property="article:tag" content="MongoDB-OTT">
 <meta property="article:tag" content="MongoDB-troubleshoot">
 <meta property="article:tag" content="MongoDB-splitChunk">
 <meta property="article:tag" content="MongoDB-sharding">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://wangxin201492.github.io/MongoDB/sharding/splitChunk/MongoDB-sharding-troubleshoot-cacheRefreshX/MongoDB-cache-refresh.png">
+<meta name="twitter:image" content="https://wangxin201492.github.io/techImages/MongoDB-cache-refresh.png">
 
 
 
@@ -420,7 +420,7 @@
 <li>受其他节点行为影响，收到 <code>forceRoutingTableRefresh</code> 命令，强制刷新</li>
 <li>一些行为必须要获取最新的路由信息，比如 <code>cleanupOrphaned</code></li>
 </ul>
-<h2 id="路由刷新行为"><a href="#路由刷新行为" class="headerlink" title="路由刷新行为"></a>路由刷新行为</h2><p><img src="MongoDB-cache-refresh.png" alt="MongoDB-cache-refresh"></p>
+<h2 id="路由刷新行为"><a href="#路由刷新行为" class="headerlink" title="路由刷新行为"></a>路由刷新行为</h2><p><img src="https://wangxin201492.github.io/techImages/MongoDB-cache-refresh.png" alt="MongoDB-cache-refresh"></p>
 <p>具体的刷新行为分为两步：</p>
 <p>第一步：从config节点拉取权威的路由信息，并进行CatalogCache路由信息刷新。实际最终是通过 <code>ConfigServerCatalogCacheLoader</code> 线程来进行的，构造一个</p>
 <figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">	<span class="attr">"ns"</span>: namespace,</span><br><span class="line">  "lastmod": &#123; $gte: sinceVersion&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
@@ -436,7 +436,7 @@
 
 <p><strong>这里也即是文章开篇提到影响我们性能的日志，根因还是由于更新元信息的X锁导致。</strong></p>
 <h2 id="3-6-版本对-chunk-version-管理的变化"><a href="#3-6-版本对-chunk-version-管理的变化" class="headerlink" title="3.6+版本对 chunk version 管理的变化"></a>3.6+版本对 chunk version 管理的变化</h2><p>那么，为什么 3.4版本 没有问题，而到了 4.0版本 却发生了性能退化呢？这里直接给出答案：<strong>3.6&amp;4.0的最新小版本当中，当shard进行 splitChunk 时，如果 shardVersion == collectionVersion ，则会增加 major version，进而触发路由刷新。</strong>而3.4版本中只会增加 minor version。这里首先来看下 splitChunk 的基本流程，随后我们再来详述为什么要做这样的改动</p>
-<h3 id="splitChunk-流程"><a href="#splitChunk-流程" class="headerlink" title="splitChunk 流程"></a>splitChunk 流程</h3><p><img src="MongoDB-splitChunk.png" alt="MongoDB-splitChunk"></p>
+<h3 id="splitChunk-流程"><a href="#splitChunk-流程" class="headerlink" title="splitChunk 流程"></a>splitChunk 流程</h3><p><img src="https://wangxin201492.github.io/techImages/MongoDB-splitChunk.png" alt="MongoDB-splitChunk"></p>
 <ul>
 <li><strong>「auto-spliting触发」</strong>：在 4.0及以前的版本中，sharding实例的 auto-spliting 是由 mongos 来触发的。每次有写入请求时，mongos都会记录对应chunk的写入量，并判断是否要向 shardServer 下发一次 <code>splitChunk</code> 请求。判断标准：<code>dataWrittenBytes &gt;= maxChunkSize / 5(固定值)</code>。</li>
 <li><strong>「splitVector + splitChunk」</strong>：向 chunk所在的shard 下发一个 <code>splitVector</code> 请求，获取对该chunk进行拆分的拆分点。该过程会根据索引进行一定的数据扫描及计算，详见：<a href="https://developer.aliyun.com/article/119494" target="_blank" rel="noopener">SplitVector命令</a>。若 <code>splitVector</code> 获取到了具体的拆分点，则再次向 chunk所在的shard 下发一个 <code>splitChunk</code> 请求，进行实际的拆分。</li>
@@ -450,7 +450,7 @@
 </blockquote>
 <p>根本原因是为了保护 mongos 不做必须要的路由刷新，因为 splitChunk 并不会改变路由目标，所以 mongos 不需要感知。</p>
 <p>但是只进行小版本的自增，如果用户进行单调递增的写入，容易造成较大的性能开销。</p>
-<p><img src="MongoDB-SERVER-41480.png" alt="MongoDB-SERVER-41480"></p>
+<p><img src="https://wangxin201492.github.io/techImages/MongoDB-SERVER-41480.png" alt="MongoDB-SERVER-41480"></p>
 <p>假设 sharding实例有2个mongos：mongosA、mongosB，2个shard：shardA(chunkRange: MinKey ~ 0)，shardB(chunkRange: 0 ~ Maxkey)。用户持续单调递增写入。</p>
 <ul>
 <li><strong>T1时刻</strong>：mongosB首先判断chunk满足<strong>「auto-spliting触发」</strong> 条件，向 shardB 发送<strong>「splitVector + splitChunk」</strong>，在请求正常结束后，mongosB触发路由刷新。此时，shardB 的 chunkRange 为 0 ~ 100，100 ~ Maxkey。</li>
@@ -468,7 +468,7 @@
 <p>However, this logic seems to be causing more harm than good in the case of almost uniform writes across all chunks. If it is the case that all shards are doing splits almost in unison, under this fix there will constantly be a bump in the collection version, which means constant stalls due to StaleShardVersion.</p>
 </blockquote>
 <p>然而，在对所有chunk进行均衡写入的情况下，这个逻辑似乎弊大于利。如果这种场景下，所有的shard同时进行split，那么在 <strong>SERVER-41480</strong> 修复下，collection version 将不断出现颠簸，也就意味着不断由于 <code>StaleShardVersion</code> 而导致不断暂停。</p>
-<p><img src="MongoDB-SERVER-49233.png" alt="MongoDB-SERVER-49233"></p>
+<p><img src="https://wangxin201492.github.io/techImages/MongoDB-SERVER-49233.png" alt="MongoDB-SERVER-49233"></p>
 <p>举例来详细说明下这个问题：假设某sharding实例有4个shard，各持有2个chunk，当前时刻major version=N。客户端对sharding实例的所有chunk进行均衡的写入，某时刻mongosA判断所有chunk符合split条件，依次对各shard进行连续的 split chunk 触发。为了便于说明，假设如图所示，在T1，T2，T3，T4时刻，依次在ShardA、shardB、shardC、shardD进行连续的chunk split触发，那么：</p>
 <ul>
 <li>T1.1时刻 chunk1 发生 split，使得 shardA 的 shardVersion == collection；T1.2时刻 chunk2 发生 split，触发 configServer major version ++ ，此时最新的major version=N+1；随后的T1.3时刻，shardA感知后刷新本地major version=N+1</li>
