@@ -260,6 +260,308 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/splitChunk/MongoDB-sharding-troubleshoot-cacheRefreshX/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/sharding/splitChunk/MongoDB-sharding-troubleshoot-cacheRefreshX/" itemprop="url">MongoDB 路由表刷新导致响应慢</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-11-29T14:16:20+08:00">
+                2020-11-29
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/" itemprop="url" rel="index">
+                    <span itemprop="name">sharding</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/splitChunk/" itemprop="url" rel="index">
+                    <span itemprop="name">splitChunk</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p>MongoDB sharding 实例从 <strong>3.4版本</strong> 升级到 <strong>4.0版本</strong> 以后插入性能明显降低，观察日志发现大量的 <code>insert</code> 请求慢日志：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">2020-08-19T16:40:46.563+0800 I COMMAND [conn1528] command sdb.sColl command: insert &#123; insert: &quot;sColl&quot;, xxx&#125; ... locks: &#123;Global: &#123; acquireCount: &#123; r: 6, w: 2 &#125; &#125;, Database: &#123; acquireCount: &#123; r: 2, w: 2 &#125; &#125;, Collection: &#123; acquireCount: &#123; r: 2, w: 2 &#125;, acquireWaitCount: &#123; r: 1 &#125;, timeAcquiringMicros: &#123; r: 2709634 &#125; &#125; &#125; protocol:op_msg 2756ms</span><br></pre></td></tr></table></figure>
+
+<p>日志中可以看到 <code>insert</code> 请求执行获取 collection 上的 IS锁 2次，其中一次发生等待，等待时间为2.7s，这与 <code>insert</code> 请求执行时间保持一致。说明性能降低与<strong>锁等待</strong>有明显的相关性。</p>
+<p>追溯日志发现 2.7s 前，系统正在进行 collection 元数据刷新（2.7s的时长与collection本身chunk较多相关）：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">2020-08-19T16:40:43.853+0800 I SH_REFR [ConfigServerCatalogCacheLoader-20] Refresh for collection sdb.sColl from version 25550573|83||5f59e113f7f9b49e704c227f to version 25550574|264||5f59e113f7f9b49e704c227f took 8676ms</span><br><span class="line">2020-08-19T16:40:43.853+0800 I SHARDING [conn1527] Updating collection metadata for collection sdb.sColl from collection version: 25550573|83||5f59e113f7f9b49e704c227f, shard version: 25550573|72||5f59e113f7f9b49e704c227f to collection version: 25550574|264||5f59e113f7f9b49e704c227f, shard version: 25550574|248||5f59e113f7f9b49e704c227f</span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="chunk-版本信息"><a href="#chunk-版本信息" class="headerlink" title="chunk 版本信息"></a>chunk 版本信息</h2><p>首先，我们来理解下上文中的版本信息。在上文日志中看到，shard version 和 collection version 形式均为 「25550573|83||5f59e113f7f9b49e704c227f」，这即是一个 chunk version，通过 “|” 和 “||” 将版本信息分为三段：</p>
+<ul>
+<li>第一段为 <code>major version</code> : 整数，用于<strong>辨识路由指向是否发生变化，以便各节点及时更新路由</strong>。比如在发生chunk 在 shard 之间迁移时会增加</li>
+<li>第二段为 <code>minor version</code> : 整数，主要用于记录<strong>不影响路由指向的一些变化</strong>。比如chunk 发生 split 时增加</li>
+<li>第三段为 <code>epoch</code> : objectID，标识集合的唯一实例，用于<strong>辨识集合是否发生了变化</strong>。只有当 collection 被 drop 或者 collection的shardKey发生refined时 会重新生成</li>
+</ul>
+<p><strong>shard version</strong> 为 sharded collection 在目标shard上最高的 chunk version</p>
+<p><strong>collection version</strong> 为 sharded collection 在所有shard上最高的 chunk version</p>
+<blockquote>
+<p>下文 “路由更新触发场景” - “场景一：请求触发” 中就描述了使用 shard version 来触发路由更新的典型应用场景。</p>
+</blockquote>
+<h2 id="路由信息存储"><a href="#路由信息存储" class="headerlink" title="路由信息存储"></a>路由信息存储</h2><p>sharded collection 的路由信息被记录在 configServer 的 <a href="https://docs.mongodb.com/manual/reference/config-database/#config.chunks" target="_blank" rel="noopener">config.chunks</a> 集合中，而 mongos&amp;shardServer 则按需从 configServer 中加载到本地缓存(CatalogCache)中。</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// config.chunks</span></span><br><span class="line">&#123;</span><br><span class="line">        <span class="attr">"_id"</span> : <span class="string">"sdb.sColl-name_106.0"</span>,</span><br><span class="line">        "lastmod" : Timestamp(4, 2),</span><br><span class="line">        "lastmodEpoch" : ObjectId("5f3ce659e6957ccdd6a56364"),</span><br><span class="line">        "ns" : "sdb.sColl",</span><br><span class="line">        "min" : &#123;</span><br><span class="line">                "name" : 106</span><br><span class="line">        &#125;,</span><br><span class="line">        "max" : &#123;</span><br><span class="line">                "name" : 107</span><br><span class="line">        &#125;,</span><br><span class="line">        "shard" : "mongod8320",</span><br><span class="line">        "history" : [</span><br><span class="line">                &#123;</span><br><span class="line">                        "validAfter" : Timestamp(1598001590, 84),</span><br><span class="line">                        "shard" : "mongod8320"</span><br><span class="line">                &#125;</span><br><span class="line">        ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上面示例中记录的 document 表示该 chunk ：</p>
+<ul>
+<li>所属的 namespace 为 “sdb.sColl”，其 epoch 为 “5f3ce659e6957ccdd6a56364”</li>
+<li>chunk区间为 {“name”: 106} ~ {“name”: 107}，chunk版本为 {major=4, minor=2}，在 mongod8320 的shard上</li>
+<li>同时记录了一些历史信息</li>
+</ul>
+<h2 id="路由更新触发场景"><a href="#路由更新触发场景" class="headerlink" title="路由更新触发场景"></a>路由更新触发场景</h2><p>路由更新采用 “lazy” 的机制，非必须的场景下不会进行路由更新。主要有2种场景会进行路由刷新：</p>
+<h3 id="场景一：请求触发"><a href="#场景一：请求触发" class="headerlink" title="场景一：请求触发"></a>场景一：请求触发</h3><p>mongos 收到客户端请求后，根据当前 CatalogCache 缓存中的路由信息，为客户端请求增加一个 <strong>「shardVersion」</strong> 的元信息。然后按照路由信息将请求分发到目标shard上。</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">&#123; </span><br><span class="line">  insert: "sCollName", </span><br><span class="line">  documents: [ &#123; _id: ObjectId('5f685824c800cd1689ca3be8'), name: xxxx &#125; ], </span><br><span class="line">  shardVersion: [ Timestamp(5, 1), ObjectId('5f3ce659e6957ccdd6a56364') ], </span><br><span class="line">  $db: "sdb"</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>shardServer 收到 mongos 发来的请求后，提取其中的 <strong>「shardVersion」</strong> 字段，并与本地存储的 <strong>「shardVersion」</strong>进行比较。比较二者 <code>epoch &amp; majorVersion</code> 是否相同，相同则认为可以进行写入。如果版本不匹配，则抛出一个 <code>StaleConfigInfo</code> 异常。对于该异常，shardServer&amp;mongos 均会进行处理，逻辑基本一致：如果本地路由信息是低版本的，则进行路由刷新。</p>
+<h3 id="场景二：特殊请求"><a href="#场景二：特殊请求" class="headerlink" title="场景二：特殊请求"></a>场景二：特殊请求</h3><ul>
+<li>一些命令执行一定会触发路由信息变化，比如 <code>moveChunk</code></li>
+<li>受其他节点行为影响，收到 <code>forceRoutingTableRefresh</code> 命令，强制刷新</li>
+<li>一些行为必须要获取最新的路由信息，比如 <code>cleanupOrphaned</code></li>
+</ul>
+<h2 id="路由刷新行为"><a href="#路由刷新行为" class="headerlink" title="路由刷新行为"></a>路由刷新行为</h2><p><img src="MongoDB-cache-refresh.png" alt="MongoDB-cache-refresh"></p>
+<p>具体的刷新行为分为两步：</p>
+<p>第一步：从config节点拉取权威的路由信息，并进行CatalogCache路由信息刷新。实际最终是通过 <code>ConfigServerCatalogCacheLoader</code> 线程来进行的，构造一个</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">	<span class="attr">"ns"</span>: namespace,</span><br><span class="line">  "lastmod": &#123; $gte: sinceVersion&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>请求来获取路由信息。如果本地没有collection的路由信息，则会那么全量获取路由信息，<code>sinceVersion</code> = (0,0) ；否则只需增量获取路由信息， <code>sinceVersion</code> = 本地路由信息中最大的版本号，即 <strong>shard version</strong>。</p>
+<p><code>ConfigServerCatalogCacheLoader</code> 获得到路由信息以后，会刷新 CatalogCache中的路由信息，此时系统日志会打印上文中看到的：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">2020-08-19T16:40:43.853+0800 I SH_REFR [ConfigServerCatalogCacheLoader-20] Refresh for collection sdb.sColl from version 25550573|83||5f59e113f7f9b49e704c227f to version 25550574|264||5f59e113f7f9b49e704c227f took 8676ms</span><br></pre></td></tr></table></figure>
+
+
+
+<p>第二步：更新 <code>MetadataManager</code>(用于维护集合的元信息，并提供对部分场景获取一个一致性的路由信息等功能) 中的 路由信息。更新 <code>MetadataManager</code> 时为了保证一致性，会给 collection 增加一个 <strong>X锁</strong>。更新过程中，系统日志会打印上文看到的第二条日志：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">2020-08-19T16:40:43.853+0800 I SHARDING [conn1527] Updating collection metadata for collection sdb.sColl from collection version: 25550573|83||5f59e113f7f9b49e704c227f, shard version: 25550573|72||5f59e113f7f9b49e704c227f to collection version: 25550574|264||5f59e113f7f9b49e704c227f, shard version: 25550574|248||5f59e113f7f9b49e704c227f</span><br></pre></td></tr></table></figure>
+
+<p><strong>这里也即是文章开篇提到影响我们性能的日志，根因还是由于更新元信息的X锁导致。</strong></p>
+<h2 id="3-6-版本对-chunk-version-管理的变化"><a href="#3-6-版本对-chunk-version-管理的变化" class="headerlink" title="3.6+版本对 chunk version 管理的变化"></a>3.6+版本对 chunk version 管理的变化</h2><p>那么，为什么 3.4版本 没有问题，而到了 4.0版本 却发生了性能退化呢？这里直接给出答案：<strong>3.6&amp;4.0的最新小版本当中，当shard进行 splitChunk 时，如果 shardVersion == collectionVersion ，则会增加 major version，进而触发路由刷新。</strong>而3.4版本中只会增加 minor version。这里首先来看下 splitChunk 的基本流程，随后我们再来详述为什么要做这样的改动</p>
+<h3 id="splitChunk-流程"><a href="#splitChunk-流程" class="headerlink" title="splitChunk 流程"></a>splitChunk 流程</h3><p><img src="MongoDB-splitChunk.png" alt="MongoDB-splitChunk"></p>
+<ul>
+<li><strong>「auto-spliting触发」</strong>：在 4.0及以前的版本中，sharding实例的 auto-spliting 是由 mongos 来触发的。每次有写入请求时，mongos都会记录对应chunk的写入量，并判断是否要向 shardServer 下发一次 <code>splitChunk</code> 请求。判断标准：<code>dataWrittenBytes &gt;= maxChunkSize / 5(固定值)</code>。</li>
+<li><strong>「splitVector + splitChunk」</strong>：向 chunk所在的shard 下发一个 <code>splitVector</code> 请求，获取对该chunk进行拆分的拆分点。该过程会根据索引进行一定的数据扫描及计算，详见：<a href="https://developer.aliyun.com/article/119494" target="_blank" rel="noopener">SplitVector命令</a>。若 <code>splitVector</code> 获取到了具体的拆分点，则再次向 chunk所在的shard 下发一个 <code>splitChunk</code> 请求，进行实际的拆分。</li>
+<li><strong>「_configsvrCommitChunkSplit」</strong>：shardServer 收到 <code>splitChunk</code> 请求后，首先获取一个分布式锁，然后向 configServer 下发一个 <code>_configsvrCommitChunkSplit</code>。configServer 收到该请求后进行数据更新，完成splitChunk，过程中会有 chunk 版本信息的变化。</li>
+<li><strong>「route refresh」</strong>：上述流程正常完成后，mongos进行路由刷新。</li>
+</ul>
+<h3 id="splitChunk-时，chunk-version变化"><a href="#splitChunk-时，chunk-version变化" class="headerlink" title="splitChunk 时，chunk version变化"></a>splitChunk 时，chunk version变化</h3><p>在 <a href="https://jira.mongodb.org/browse/SERVER-41480" target="_blank" rel="noopener">SERVER-41480</a> 中，对splitChunk时，chunk version版本管理进行了调整</p>
+<p>在3.4版本以及3.6、4.0较早的小版本中，<strong>「_configsvrCommitChunkSplit」</strong> 只会增加 chunk 的minor version。</p>
+<blockquote>
+<p>The original reasoning for this was to prevent unnecessary routing table refreshes on the routers, which don’t ordinarily need to know about chunk splits (since they don’t change targeting information).</p>
+</blockquote>
+<p>根本原因是为了保护 mongos 不做必须要的路由刷新，因为 splitChunk 并不会改变路由目标，所以 mongos 不需要感知。</p>
+<p>但是只进行小版本的自增，如果用户进行单调递增的写入，容易造成较大的性能开销。</p>
+<p><img src="MongoDB-SERVER-41480.png" alt="MongoDB-SERVER-41480"></p>
+<p>假设 sharding实例有2个mongos：mongosA、mongosB，2个shard：shardA(chunkRange: MinKey ~ 0)，shardB(chunkRange: 0 ~ Maxkey)。用户持续单调递增写入。</p>
+<ul>
+<li><strong>T1时刻</strong>：mongosB首先判断chunk满足<strong>「auto-spliting触发」</strong> 条件，向 shardB 发送<strong>「splitVector + splitChunk」</strong>，在请求正常结束后，mongosB触发路由刷新。此时，shardB 的 chunkRange 为 0 ~ 100，100 ~ Maxkey。</li>
+<li>随后在一定时间内（比如<strong>T2时刻</strong>），mongosB无法满足<strong>「auto-spliting触发」</strong> 条件，而mongosA持续判断满足条件，向shardB发送 <strong>「splitVector + splitChunk」</strong>，但最终在<strong>「_configsvrCommitChunkSplit」</strong>步骤，由于 mongosA 的路由表不是最新的，所以无法按照其请求将 0 ~ Maxkey 进行拆分，最终无法成功执行。由于整个流程没有完整结束，所以 mongosA 也无法进行 路由表更新，则<strong>在这段时间内持续会有这样的无效请求</strong>。</li>
+</ul>
+<p>而如上文描述的，<code>splitVector</code> 根据索引进行一定的数据扫描、计算，<code>splitChunk</code> 会获取分布式锁，均为耗时较高的请求，所以这种场景对性能的影响不可忽视。</p>
+<p>在 <strong>SERVER-41480</strong>中对上述问题进行修复，修复的方式是如果 shardVersion == collectionVersion (即 collection上次的 chunk split 也发生在该shard上) ，则会增加 major version，以触发各节点路由的刷新。修复的版本为<code>3.6.15</code>, <code>4.0.13</code>, <code>4.3.1</code>, <code>4.2.2</code>。</p>
+<p>而这个修复则导致了开篇我们遇到的问题，确切些来说，<strong>任何在 shardVersion == collectionVersion 的 shard 上进行 split 操作都会导致全局路由的刷新。</strong></p>
+<h2 id="官方修复"><a href="#官方修复" class="headerlink" title="官方修复"></a>官方修复</h2><p><a href="https://jira.mongodb.org/browse/SERVER-49233" target="_blank" rel="noopener">SERVER-49233</a> 中对这个问题进行了详细的阐述：</p>
+<blockquote>
+<p>we chose a solution, which erred on the side of correctness, with the reasoning that on most systems auto-splits are happening rarely and are not happening at the same time across all shards.</p>
+</blockquote>
+<p>我们选择的方案，宁可过于注重正确性（<strong>SERVER-41480</strong>），理由是在大多数的系统中，auto-split很少发生，而且不会同时在所有shard上发生。</p>
+<blockquote>
+<p>However, this logic seems to be causing more harm than good in the case of almost uniform writes across all chunks. If it is the case that all shards are doing splits almost in unison, under this fix there will constantly be a bump in the collection version, which means constant stalls due to StaleShardVersion.</p>
+</blockquote>
+<p>然而，在对所有chunk进行均衡写入的情况下，这个逻辑似乎弊大于利。如果这种场景下，所有的shard同时进行split，那么在 <strong>SERVER-41480</strong> 修复下，collection version 将不断出现颠簸，也就意味着不断由于 <code>StaleShardVersion</code> 而导致不断暂停。</p>
+<p><img src="MongoDB-SERVER-49233.png" alt="MongoDB-SERVER-49233"></p>
+<p>举例来详细说明下这个问题：假设某sharding实例有4个shard，各持有2个chunk，当前时刻major version=N。客户端对sharding实例的所有chunk进行均衡的写入，某时刻mongosA判断所有chunk符合split条件，依次对各shard进行连续的 split chunk 触发。为了便于说明，假设如图所示，在T1，T2，T3，T4时刻，依次在ShardA、shardB、shardC、shardD进行连续的chunk split触发，那么：</p>
+<ul>
+<li>T1.1时刻 chunk1 发生 split，使得 shardA 的 shardVersion == collection；T1.2时刻 chunk2 发生 split，触发 configServer major version ++ ，此时最新的major version=N+1；随后的T1.3时刻，shardA感知后刷新本地major version=N+1</li>
+<li>随后的T2、T3、T4时刻依次发生上述流程。</li>
+<li>最终在T5时刻，mongosA 在触发完split chunk后主动刷新路由表，感知major version = N+4</li>
+</ul>
+<p>那么当系统中另外一个mongos（未发生更新，路由表中major version=N）向shard（比如shardB）发送请求时</p>
+<ul>
+<li>在第一次请求交互后，mongosX感知自身major version落后，与configServer交互，更新本地路由表后下发第二次请求</li>
+<li>第二次请求中，shardB感知自身major version落后，通过configServer拉取并更新路由表</li>
+<li>在第三次请求中，双方均获得最新的路由表，而完成此次请求</li>
+<li>mongos&amp;shard之间感知路由表落后靠请求交互时的 <code>StaleShardVersion</code> 来完成，而路由表更新的过程中，所有需要依赖该集合路由表完成的请求，都需要<strong>等待路由表更新完成</strong>后才能继续。所以上述过程即jira中描述的：<strong>不断由于</strong> <strong><code>StaleShardVersion</code></strong> <strong>而导致不断暂停。</strong></li>
+</ul>
+<p>同时 <strong>SERVER-49233</strong> 提供了具体的解决方案，在 <code>3.6.19</code>、<code>4.0.20</code>、<code>4.2.9</code> 及后续的版本中，提供 <code>incrementChunkMajorVersionOnChunkSplit</code> 参数， 默认为 false（即 <code>splitChunk</code> 不会增加major version），可在配置文件或者通过启动setParameter的方式设置为true。</p>
+<p>而由于 auto-spliting 逻辑在 4.2版本 修改为在 shardServer 上触发(<a href="https://jira.mongodb.org/browse/SERVER-34448" target="_blank" rel="noopener">SERVER-34448</a>)， 也就不会再有 mongos 频繁下发无效 splitChunk 的场景。 所以对于 4.4 版本， <a href="https://jira.mongodb.org/browse/SERVER-49433" target="_blank" rel="noopener">SERVER-49433</a> 直接将增加 major version 的逻辑回滚掉，只会增加 minor version。（4.2版本由于中间版本提供了 major version 逻辑，所以提供 <code>incrementChunkMajorVersionOnChunkSplit</code> 来让用户选择）</p>
+<p>这里对各版本行为总结如下：</p>
+<ul>
+<li>只会增加 minor version：<code>3.4</code>所有版本、<code>3.6.15</code> 之前的版本、<code>4.0.13</code>之前的版本、<code>4.2.2</code>之前的版本、<code>4.4</code>（暂未发布）</li>
+<li>shardVersion == collectionVersion 会增加 major version，否则增加minor version：<code>3.6.15</code>~ <code>3.6.18</code>（包含）之间的版本、<code>4.0.13</code> ~ <code>4.0.19</code>（包含）之间的版本、<code>4.2.2</code> ~ <code>4.2.8</code>（包含）之间的版本</li>
+<li>提供 <code>incrementChunkMajorVersionOnChunkSplit</code> 参数，默认只增加 minor version：<code>3.6.19</code>及后续版本、<code>4.0.20</code>及后续版本、<code>4.2.9</code>及后续版本</li>
+</ul>
+<h2 id="使用场景与解决方案"><a href="#使用场景与解决方案" class="headerlink" title="使用场景与解决方案"></a>使用场景与解决方案</h2><table>
+<thead>
+<tr>
+<th>MongoDB版本</th>
+<th>使用场景</th>
+<th>修复方案</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>4.2以下</td>
+<td>数据写入固定在某些Shard</td>
+<td>采用可以增加major version的版本（或设置 <code>incrementChunkMajorVersionOnChunkSplit</code> = true）</td>
+</tr>
+<tr>
+<td>4.2以下</td>
+<td>数据在shard之间写入较均衡</td>
+<td>采用仅增加minor version的版本（或设置 <code>incrementChunkMajorVersionOnChunkSplit</code> = false）</td>
+</tr>
+<tr>
+<td>4.2</td>
+<td>数据写入固定在某些Shard</td>
+<td>由于4.2版本 splitChunk 在shardServer上触发，所以无需关心</td>
+</tr>
+<tr>
+<td>4.2</td>
+<td>数据在shard之间写入较均衡</td>
+<td>采用仅增加minor version的版本（或设置 <code>incrementChunkMajorVersionOnChunkSplit</code> = false）</td>
+</tr>
+</tbody></table>
+<p><a href="https://www.aliyun.com/product/mongodb" target="_blank" rel="noopener">阿里云MongoDB</a> 4.2版本中已经跟进了官方修复。遇到该问题的用户可以将实例升级到4.2的最新小版本，而后按需配置<code>incrementChunkMajorVersionOnChunkSplit</code>即可。</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/lock/OCC/OCC-overview/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -2311,250 +2613,6 @@
 
 
     
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/shell/shell-find/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/shell/shell-find/" itemprop="url">【shell】再看一眼find--find使用中遇到的问题分析</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-08-15T20:01:48+08:00">
-                2015-08-15
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/shell/" itemprop="url" rel="index">
-                    <span itemprop="name">shell</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <h2 id="1-简单find命令"><a href="#1-简单find命令" class="headerlink" title="1 简单find命令"></a>1 简单find命令</h2><h3 id="1-1-目录结构"><a href="#1-1-目录结构" class="headerlink" title="1.1 目录结构"></a>1.1 目录结构</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">代码1</span><br><span class="line">$ tree</span><br><span class="line">.</span><br><span class="line">|-- 2.log</span><br><span class="line">`-- backup</span><br><span class="line">    `-- 1.log</span><br><span class="line"></span><br><span class="line">3 directories, 0 files</span><br></pre></td></tr></table></figure>
-
-<h3 id="1-2-简单的find命令"><a href="#1-2-简单的find命令" class="headerlink" title="1.2 简单的find命令"></a>1.2 简单的find命令</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">代码2</span><br><span class="line">$ find -path ./backup</span><br><span class="line">./backup</span><br></pre></td></tr></table></figure>
-
-<h3 id="1-3-错误的通配符使用"><a href="#1-3-错误的通配符使用" class="headerlink" title="1.3 错误的通配符使用"></a>1.3 错误的通配符使用</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">代码3</span><br><span class="line">$ mkdir backup123</span><br><span class="line">$ find -path ./backup*</span><br><span class="line">find: paths must precede expression</span><br><span class="line">Usage: find [path...] [expression]</span><br></pre></td></tr></table></figure>
-
-<p><code>find</code>命令报错：路径必须先表达。问题分析（引自：<a href="http://www.cnblogs.com/baibaluo/archive/2012/08/16/2642403.html" target="_blank" rel="noopener">http://www.cnblogs.com/baibaluo/archive/2012/08/16/2642403.html</a>）:</p>
-<p>当目录下存在多个<code>backup*</code>，shell命令变成<code>find -path backup backup123</code>.此时，<code>-name</code>后面有2个匹配字符，shell报错。</p>
-<p><strong>解决办法</strong>：-path(-name)匹配的字符串已经要用单引号，或者双引号引住。</p>
-<h3 id="1-4-正确的通配符写法"><a href="#1-4-正确的通配符写法" class="headerlink" title="1.4 正确的通配符写法"></a>1.4 正确的通配符写法</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">代码4</span><br><span class="line">$ find -path <span class="string">'./backup*'</span></span><br><span class="line">./backup</span><br><span class="line">./backup/1.log</span><br><span class="line">./backup123</span><br></pre></td></tr></table></figure>
-
-<p>此时，命令运行正确！</p>
-<h2 id="2-find多条件"><a href="#2-find多条件" class="headerlink" title="2 find多条件"></a>2 find多条件</h2><p><code>expr1 expr2 -o expr3</code> 等同于 <code>expr1 -a expr2 -o expr3</code>.与其他语言中的<strong>与或非</strong>类似。并且是<strong>短路求值</strong></p>
-<h3 id="2-1-find多条件尝试-与"><a href="#2-1-find多条件尝试-与" class="headerlink" title="2.1 find多条件尝试:与"></a>2.1 find多条件尝试:与</h3><pre><code>代码5
-$ find -path ./backup -name &apos;*.log&apos;
-$</code></pre><p>没有任何返回结果。该语句的含义是：路径是path，并且名字是以.log结尾的文件。显然，并不存在。</p>
-<p>本语句实际上是想查找，backup下所有的以.log结尾的文件。应是：</p>
-<ol>
-<li><code>find -path &#39;./backup*&#39; -name &#39;*.log&#39;</code></li>
-</ol>
-<h3 id="2-2-find多条件尝试-或"><a href="#2-2-find多条件尝试-或" class="headerlink" title="2.2 find多条件尝试:或"></a>2.2 find多条件尝试:或</h3><pre><code>代码6
-$ find -path &apos;./backup*&apos; -o -name &apos;*.log&apos;
-./backup
-./backup/1.log
-./2.log
-./backup123</code></pre><p>到这个地方，<code>-a</code> 和 <code>-o</code>的体会已经一目了然了吧。这条命令展示了在backup*下的所有文件和以.log结尾的所有文件。</p>
-<h2 id="3-prune的体会"><a href="#3-prune的体会" class="headerlink" title="3 -prune的体会"></a>3 <code>-prune</code>的体会</h2><p>贴上这样的几条<code>shell</code>命令，请先自行体会：</p>
-<pre><code>代码7
-$ find -path &apos;./backup*&apos;
-./backup
-./backup/1.log
-./backup123
-$ find -path &apos;./backup*&apos; -prune
-./backup
-./backup123</code></pre><h3 id="3-1-prune的基本使用"><a href="#3-1-prune的基本使用" class="headerlink" title="3.1 prune的基本使用"></a>3.1 <code>prune</code>的基本使用</h3><p><code>-prune</code>在man中是这么说的</p>
-<blockquote>
-<p>If -depth is not given, true; do not descend the current directory.<br>If -depth is given, false; no effect.</p>
-</blockquote>
-<p>如果<code>find</code>语句中存在-depth选项，那么<code>-prune</code>将会被忽略。否则，<code>-prune</code>将声明不展开当前路径。</p>
-<p>这样在上述的1、2条命令中，由于<code>-prune</code>选项的存在，致使backup路径没有展开。所以1.log没有在打印列表中。</p>
-<p>我们再次做这样的尝试：</p>
-<pre><code>代码8
-$ touch backup123/3.log
-$ find -path &apos;./backup*&apos; -prune
-./backup
-./backup123
-$ find -path &apos;./backup*&apos;
-./backup
-./backup/1.log
-./backup123
-./backup123/3.log</code></pre><p>打印的结果和预期是一样的。</p>
-<p>按照上述<strong>2 find多条件</strong>中说道的那样，<code>find -path &#39;./backup*&#39;</code>获得所有backup前缀的文件，然后将结果和<code>-prune</code>相<code>与</code>：其实就是判断前者的结果中是否包含<strong>指定路径</strong>的子文件(夹)。</p>
-<h3 id="3-2-prune做排除路径用"><a href="#3-2-prune做排除路径用" class="headerlink" title="3.2 prune做排除路径用"></a>3.2 <code>prune</code>做排除路径用</h3><p>而一般情况下<code>prune</code>是这样使用的</p>
-<pre><code>代码9
-$ find -path &apos;./backup*&apos; -prune -o -name &apos;*.log&apos; -print
-./2.log</code></pre><p>指代的意思是当前路径除去<code>backup*</code>文件夹外的所有<code>*.log</code>文件。</p>
-<h4 id="3-2-1-一个问题"><a href="#3-2-1-一个问题" class="headerlink" title="3.2.1 一个问题"></a>3.2.1 一个问题</h4><p>这样是如愿以偿了，但是我们执行一下这样的一条命令：</p>
-<pre><code>代码10
-$ find -path &apos;./backup*&apos; -o -name &apos;*.log&apos; -print
-./2.log</code></pre><p>返回的结果一模一样。</p>
-<h4 id="3-2-2-进一步剖析"><a href="#3-2-2-进一步剖析" class="headerlink" title="3.2.2 进一步剖析"></a>3.2.2 进一步剖析</h4><p>这个问题我们暂且搁置不论，继续来看这样的2个命令：</p>
-<pre><code>代码11
-$ find -path &apos;./backup*&apos; -prune -o -name &apos;*.log&apos;
-./backup
-./2.log
-./backup123
-$ find -path &apos;./backup*&apos;  -o -name &apos;*.log&apos;
-./backup
-./backup/1.log
-./2.log
-./backup123</code></pre><p>2个结果集中只是缺少了<code>./backup/1.log</code>，<code>-prune</code>做到的只是一个收缩路径的功能。</p>
-<p>再继续对比这2个命令和上面两个命令，缺少的是一个<code>-print</code>.其实在man里面有这样的一句话<strong>“If no expression is given, the expression ‘-print’ is used.”</strong></p>
-<p>也就是说<code>-print</code>是个默认值，那么上面2组命令实际上可以这样看待：</p>
-<table>
-<thead>
-<tr>
-<th align="center">输入命令</th>
-<th align="center">实际命令</th>
-</tr>
-</thead>
-<tbody><tr>
-<td align="center"><code>find -path &#39;./backup*&#39; -o -name &#39;*.log&#39;</code></td>
-<td align="center"><code>find \( -path &#39;./backup*&#39; -o -name &#39;*.log&#39; \) -print</code></td>
-</tr>
-<tr>
-<td align="center"><code>find -path &#39;./backup*&#39; -o -name &#39;*.log&#39; -print</code></td>
-<td align="center"><code>find \( -path &#39;./backup*&#39; \) -o \( -name &#39;*.log&#39; -print \)</code></td>
-</tr>
-</tbody></table>
-<p><strong>代码9</strong> 和 <strong>代码10</strong>中的片段可以理解为打印<code>-path &#39;./backup*&#39;</code>为false 、 <code>-name &#39;*.log&#39;</code> 为true的find结果。</p>
-<p>而<strong>代码11</strong>中的片段则是将<code>-path &#39;./backup*&#39; -o -name &#39;*.log&#39;</code>过滤后所有为true的结果都打印。</p>
-<h4 id="3-2-3-总结"><a href="#3-2-3-总结" class="headerlink" title="3.2.3 总结"></a>3.2.3 总结</h4><p>那么这样看来，其实排除路径其实是将<code>-print</code>放置到了-o后面作为输出。而<code>-path &#39;./backup*&#39;</code>执行过，并且返回true，单并未被打印。</p>
-<p>那么是不是说，其实，其实，其实<code>-prune</code>并没有什么用？</p>
-<h2 id="4-总结：多一点角度看find"><a href="#4-总结：多一点角度看find" class="headerlink" title="4 总结：多一点角度看find"></a>4 总结：多一点角度看find</h2><p>其实可以认为</p>
-<ol>
-<li>find无可避免的对指定路径进行了全文搜索，默认情况下是深度优先搜索(只有在指定-depth的时候使用广度优先搜索)。</li>
-<li>find进行全文搜索以后，将结果扔到后面的过滤条件中，按照<strong>与或非</strong>的规则，逐条过滤。</li>
-<li>最终返回值为true的item被打印了出来</li>
-</ol>
-<p>试想这样一个场景，在一个java项目中，由于项目庞大，总文件数上万。想要找到最深2级目录下所有的java文件。</p>
-<pre><code>find . -name &quot;*.java&quot; -maxdepth 2
-find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令，显然第二条的执行效率会快！！！<code>-maxdepth 2</code> 极大程度的进行了一次结果过滤。</p>
-<p>那么在写find命令的时候，应该把能最大程度减小结果集的结果放到前面。</p>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
   </section>
 
   
@@ -2605,7 +2663,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">12</span>
+                  <span class="site-state-item-count">13</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -2616,7 +2674,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">12</span>
+                  <span class="site-state-item-count">14</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
@@ -2627,7 +2685,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
               <div class="site-state-item site-state-tags">
                 <a href="/tags/index.html">
-                  <span class="site-state-item-count">18</span>
+                  <span class="site-state-item-count">21</span>
                   <span class="site-state-item-name">标签</span>
                 </a>
               </div>
