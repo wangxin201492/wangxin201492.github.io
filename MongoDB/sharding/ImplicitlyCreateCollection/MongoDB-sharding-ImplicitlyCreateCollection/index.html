@@ -81,12 +81,12 @@
 
 <meta name="description" content="1. mongos节点 收到用户 insert 请求mongos 收到一个 insert 请求后，会经过如下流程处理将请求发送给 shard 节点： 1ServiceEntryPointMongos::handleRequest() --&gt; Strategy::clientCommand() --&gt; runCommand() --&gt; execCommandClient() --&amp;">
 <meta property="og:type" content="article">
-<meta property="og:title" content="MongoDB sharding实例 路由刷新策略">
-<meta property="og:url" content="https://wangxin201492.github.io/MongoDB/sharding/StaleConfig/MongoDB-sharding-StaleConfig/index.html">
+<meta property="og:title" content="MongoDB sharding实例 隐式创建collection">
+<meta property="og:url" content="https://wangxin201492.github.io/MongoDB/sharding/ImplicitlyCreateCollection/MongoDB-sharding-ImplicitlyCreateCollection/index.html">
 <meta property="og:site_name" content="wangxin201492">
 <meta property="og:description" content="1. mongos节点 收到用户 insert 请求mongos 收到一个 insert 请求后，会经过如下流程处理将请求发送给 shard 节点： 1ServiceEntryPointMongos::handleRequest() --&gt; Strategy::clientCommand() --&gt; runCommand() --&gt; execCommandClient() --&amp;">
-<meta property="article:published_time" content="2020-09-21T02:05:48.000Z">
-<meta property="article:modified_time" content="2021-01-29T09:16:56.495Z">
+<meta property="article:published_time" content="2020-07-31T05:21:15.000Z">
+<meta property="article:modified_time" content="2021-01-29T09:22:30.834Z">
 <meta property="article:author" content="wangxin201492">
 <meta property="article:tag" content="MongoDB-OTT">
 <meta name="twitter:card" content="summary">
@@ -119,13 +119,13 @@
 
 
 
-  <link rel="canonical" href="https://wangxin201492.github.io/MongoDB/sharding/StaleConfig/MongoDB-sharding-StaleConfig/"/>
+  <link rel="canonical" href="https://wangxin201492.github.io/MongoDB/sharding/ImplicitlyCreateCollection/MongoDB-sharding-ImplicitlyCreateCollection/"/>
 
 
 
 
 
-  <title>MongoDB sharding实例 路由刷新策略 | wangxin201492</title>
+  <title>MongoDB sharding实例 隐式创建collection | wangxin201492</title>
   
 
 
@@ -262,7 +262,7 @@
   
   
   <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/StaleConfig/MongoDB-sharding-StaleConfig/">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/ImplicitlyCreateCollection/MongoDB-sharding-ImplicitlyCreateCollection/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="name" content="wangxin201492">
@@ -279,7 +279,7 @@
 
         
         
-          <h1 class="post-title" itemprop="name headline">MongoDB sharding实例 路由刷新策略</h1>
+          <h1 class="post-title" itemprop="name headline">MongoDB sharding实例 隐式创建collection</h1>
         
 
         <div class="post-meta">
@@ -291,8 +291,8 @@
               
                 <span class="post-meta-item-text">发表于</span>
               
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-09-21T10:05:48+08:00">
-                2020-09-21
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-07-31T13:21:15+08:00">
+                2020-07-31
               </time>
             
 
@@ -336,8 +336,8 @@
                 
               
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/MongoDB/sharding/StaleConfig/" itemprop="url" rel="index">
-                    <span itemprop="name">StaleConfig</span>
+                  <a href="/categories/MongoDB/sharding/ImplicitlyCreateCollection/" itemprop="url" rel="index">
+                    <span itemprop="name">ImplicitlyCreateCollection</span>
                   </a>
                 </span>
 
@@ -376,52 +376,59 @@
         <h2 id="1-mongos节点-收到用户-insert-请求"><a href="#1-mongos节点-收到用户-insert-请求" class="headerlink" title="1. mongos节点 收到用户 insert 请求"></a>1. mongos节点 收到用户 insert 请求</h2><p>mongos 收到一个 insert 请求后，会经过如下流程处理将请求发送给 shard 节点：</p>
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ServiceEntryPointMongos::handleRequest() --&gt; Strategy::clientCommand() --&gt; runCommand() --&gt; execCommandClient() --&gt; ClusterWriteCmd::InvocationBase::run() --&gt; ClusterWriteCmd::InvocationBase::runImpl() --&gt; ClusterWriter::write() --&gt; BatchWriteExec::executeBatch() --&gt; MultiStatementTransactionRequestsSender()</span><br></pre></td></tr></table></figure>
 
-<p>在 <code>ClusterWriter::write()</code> 中会准备一个 <code>ChunkManagerTargeter</code> 来维保存目标 namespace 在 <code>CatalogCache</code> 中的路由信息，方便后续请求处理。</p>
-<p>主要代码逻辑在 <code>BatchWriteExec::executeBatch()</code> 中，主要是封装 <code>BatchWriteOp</code> 的几个核心方法来完成具体的请求处理工作：</p>
-<p>首先，根据请求的目标shard、order 等参数来将请求分成多个批次。</p>
-<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Status targetStatus = batchOp.targetBatch(targeter, recordTargetErrors, &amp;childBatches);</span><br></pre></td></tr></table></figure>
-
-<p>然后逐批构造请求，并将请求通过 <code>MultiStatementTransactionRequestsSender</code> 依次发送到shard，并等待接收结果。</p>
-<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> <span class="keyword">auto</span> request = [&amp;] &#123; <span class="keyword">const</span> <span class="keyword">auto</span> shardBatchRequest(batchOp.buildBatchRequest(*nextBatch));</span><br><span class="line">...</span><br><span class="line"><span class="function">MultiStatementTransactionRequestsSender <span class="title">ars</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">  opCtx,</span></span></span><br><span class="line"><span class="function"><span class="params">  Grid::<span class="built_in">get</span>(opCtx)-&gt;getExecutorPool()-&gt;getArbitraryExecutor(),</span></span></span><br><span class="line"><span class="function"><span class="params">  clientRequest.getNS().db().toString(),</span></span></span><br><span class="line"><span class="function"><span class="params">  requests,</span></span></span><br><span class="line"><span class="function"><span class="params">  kPrimaryOnlyReadPreference,</span></span></span><br><span class="line"><span class="function"><span class="params">  isRetryableWrite ? Shard::RetryPolicy::kIdempotent : Shard::RetryPolicy::kNoRetry)</span></span>;</span><br></pre></td></tr></table></figure>
-
-
-
-<p>在请求构造(<code>BatchWriteOp::buildBatchRequest()</code>)的的时候，设置请求的 <code>shardVersion</code>。这里实际是为请求设置了一个 <code>shardVersion</code> 字段，设置的值则为刚开始提到的 <code>CatalogCache</code> 中保存的 namespace 路由信息。</p>
-<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">request.setShardVersion(targetedBatch.getEndpoint().shardVersion);</span><br></pre></td></tr></table></figure>
-
-
-
-<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">&#123; </span><br><span class="line">  insert: "sCollName", </span><br><span class="line">  documents: [ &#123; _id: ObjectId('5f685824c800cd1689ca3be8'), name: xxxx &#125; ], </span><br><span class="line">  shardVersion: [ Timestamp(5, 1), ObjectId('5f3ce659e6957ccdd6a56364') ], </span><br><span class="line">  $db: "sdb"</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在发送给 shard 节点的请求中，会通过 <code>allowImplicitCollectionCreation</code> 字段来控制是否允许 shard 节点隐式创建collection。sharding状态下，该字段基本为 false，即不允许 shard 节点隐式创建collection</p>
+<ul>
+<li>对于 <code>insert</code> / <code>update</code> / <code>delete</code> 这三类请求，会在 <code>ClusterWriteCmd::InvocationBase::runImpl()</code> 中进行 <code>batchedRequest.setAllowImplicitCreate(false);</code> </li>
+<li><code>src/mongo/s/cluster_commands_helpers.cpp</code> 中也提供了 <code>scatterGatherVersionedTargetByRoutingTable</code> / <code>scatterGatherUnversionedTargetAllShards</code> / <code>scatterGatherOnlyVersionIfUnsharded</code> / <code>executeCommandAgainstDatabasePrimary</code> 函数。如果请求包中不显式声明 <code>allowImplicitCollectionCreation</code> ，则默认为 <code>false</code> <ul>
+<li>但是 <strong>renameCollection</strong> 及 <strong>covertToCapped</strong> 会将 <code>appendAllowImplicitCreate</code> 声明为 <code>true</code>(可以隐式创建collection)</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>shard节点可以直接创建collection，即为<strong>隐式创建collection</strong>(rs实例均采用这种方式)。否则需要和 config 交互来完成 collection 的创建，即为<strong>显式创建collection</strong></p>
+</blockquote>
+<h2 id="2-shard节点-收到-mongos节点-转发过来携带-allowImplicitCollectionCreation-false的-insert-请求"><a href="#2-shard节点-收到-mongos节点-转发过来携带-allowImplicitCollectionCreation-false的-insert-请求" class="headerlink" title="2. shard节点 收到 mongos节点 转发过来携带 allowImplicitCollectionCreation=false的 insert 请求"></a>2. shard节点 收到 mongos节点 转发过来携带 <code>allowImplicitCollectionCreation=false</code>的 insert 请求</h2><p>正常情况下， shard节点 按照如下流程处理 insert 请求：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ServiceEntryPointMongod::handleRequest() --&gt; ServiceEntryPointCommon::handleRequest() --&gt; receivedCommands() --&gt; execCommandDatabase() --&gt; runCommandImpl() --&gt; WriteCommand::InvocationBase::run() --&gt; CmdInsert::Invocation::runImpl() --&gt; performInserts() --&gt; insertBatchAndHandleErrors() --&gt; acquireCollection() --&gt; makeCollection() --&gt; DatabaseImpl::userCreateNS() --&gt; createCollection()</span><br></pre></td></tr></table></figure>
 
 
 
-<h2 id="2-shard节点-收到-mongos节点-转发过来携带-shardVersion-的-insert-请求"><a href="#2-shard节点-收到-mongos节点-转发过来携带-shardVersion-的-insert-请求" class="headerlink" title="2. shard节点 收到 mongos节点 转发过来携带 shardVersion 的 insert 请求"></a>2. shard节点 收到 mongos节点 转发过来携带 <code>shardVersion</code> 的 insert 请求</h2><p>正常情况下， shard节点 按照如下流程处理 insert 请求：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ServiceEntryPointMongod::handleRequest() --&gt; ServiceEntryPointCommon::handleRequest() --&gt; receivedCommands() --&gt; execCommandDatabase() --&gt; runCommandImpl() --&gt; WriteCommand::InvocationBase::run() --&gt; CmdInsert::Invocation::runImpl() --&gt; performInserts() --&gt; insertBatchAndHandleErrors() --&gt; acquireCollection()</span><br></pre></td></tr></table></figure>
+<p>而由于 <code>allowImplicitCollectionCreation=false</code> ，在 <code>execCommandDatabase()</code> 时会将 <code>allowImplicitCollectionCreation</code> 设置到 <code>OperationShardingState</code> 中。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">oss.setAllowImplicitCollectionCreation(allowImplicitCollectionCreationField);</span><br></pre></td></tr></table></figure>
 
 
 
-<p>在 <code>execCommandDatabase()</code> 中，会提取请求中的 <code>shardVersion</code>和<code>databaseVersion</code> 字段信息，存储到 <code>OperationShardingState</code> 中。</p>
-<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (!opCtx-&gt;getClient()-&gt;isInDirectClient() &amp;&amp;</span><br><span class="line">            readConcernArgs.getLevel() != repl::ReadConcernLevel::kAvailableReadConcern &amp;&amp;</span><br><span class="line">            (iAmPrimary ||</span><br><span class="line">             (readConcernArgs.hasLevel() || readConcernArgs.getArgsAfterClusterTime()))) &#123;</span><br><span class="line">  oss.initializeClientRoutingVersions(invocation-&gt;ns(), request.body);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>createCollection()</code> 中则获取该值，判断为false，进行uassert，产生异常，向上抛出。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">uassert(CannotImplicitlyCreateCollectionInfo(nss), <span class="string">"request doesn't allow collection to be created implicitly"</span>, OperationShardingState::<span class="built_in">get</span>(opCtx).allowImplicitCollectionCreation());</span><br></pre></td></tr></table></figure>
 
 
 
-<p>只有执行了<code>oss.initializeClientRoutingVersions()</code>，后续才会进行shardVersion比对。那么不进行shardVersion比对的场景是：</p>
+<p>异常在 <code>insertBatchAndHandleErrors</code> 中被 catch 住，在 <code>handleError()</code> 中判断异常为 <code>CannotImplicitlyCreateCollectionInfo</code> ，将异常信息设置到 <code>OperationShardingState</code> 中。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (ex.extraInfo&lt;CannotImplicitlyCreateCollectionInfo&gt;()) &#123;</span><br><span class="line">  <span class="keyword">auto</span>&amp; oss = OperationShardingState::<span class="built_in">get</span>(opCtx);</span><br><span class="line">  oss.setShardingOperationFailedStatus(ex.toStatus());</span><br><span class="line">  ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>至此原有处理流程结束， 退回到 <code>execCommandDatabase()</code> 中触发析构逻辑，在 <code>ScopedOperationCompletionShardingActions</code> 进行析构的时候处理之前设置到 <code>OperationShardingState</code> 中的异常状态。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> scoped = behaviors.scopedOperationCompletionShardingActions(opCtx);</span><br></pre></td></tr></table></figure>
+
+
+
+<p><code>ScopedOperationCompletionShardingActions</code> 的析构函数中，会通过 <code>onCannotImplicitlyCreateCollection</code> 函数向 config节点 下发一个 <code>_configsvrCreateCollection</code> 请求。发生异常则日志记录</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">ScopedOperationCompletionShardingActions::~ScopedOperationCompletionShardingActions() <span class="keyword">noexcept</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (<span class="keyword">auto</span> cannotImplicitCreateCollInfo = status-&gt;extraInfo&lt;CannotImplicitlyCreateCollectionInfo&gt;()) &#123;</span><br><span class="line">        <span class="keyword">if</span> (ShardingState::<span class="built_in">get</span>(_opCtx)-&gt;enabled()) &#123;</span><br><span class="line">            <span class="keyword">auto</span> handleCannotImplicitCreateStatus = onCannotImplicitlyCreateCollection(_opCtx, cannotImplicitCreateCollInfo-&gt;getNss());</span><br><span class="line">            <span class="keyword">if</span> (!handleCannotImplicitCreateStatus.isOK())</span><br><span class="line">                <span class="built_in">log</span>() &lt;&lt; <span class="string">"Failed to handle CannotImplicitlyCreateCollection exception"</span> &lt;&lt; causedBy(redact(handleCannotImplicitCreateStatus));</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="3-config节点-处理-configsvrCreateCollection-请求"><a href="#3-config节点-处理-configsvrCreateCollection-请求" class="headerlink" title="3. config节点 处理 _configsvrCreateCollection 请求"></a>3. config节点 处理 <code>_configsvrCreateCollection</code> 请求</h2><p>config节点 收到 <code>_configsvrCreateCollection</code> 请求后，在 <code>ConfigSvrCreateCollectionCommand::typedRun()</code> 中进行处理</p>
 <ol>
-<li>reacConcern指定为available</li>
-<li>从secondary读取且readConcern没有指定任何的参数</li>
+<li>首先通过和 <code>config.locks</code> 交互获取 <code>collection</code> 对应 namespace 和 database 的分布式锁</li>
+<li>然后通过 <code>ShardingCatalogManager::createCollection()</code> 和 primaryShard 交互，完成collection创建</li>
 </ol>
-<h3 id="2-1-是否可以进行写入"><a href="#2-1-是否可以进行写入" class="headerlink" title="2.1 是否可以进行写入"></a>2.1 是否可以进行写入</h3><p>在 <code>acquireCollection()</code> 时，会判断请求是否可以进行写入( <code>assertCanWrite_inlock()</code> )。判断的标准则是比对 <strong>当前节点存储的shardVersion</strong> 和 <strong>收到mongos发送来的shardVersion</strong>，比较二者 <code>epoch &amp; majorVersion</code> 是否相同，相同则认为可以进行写入。</p>
-<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Can we write to this data and not have a problem?</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">isWriteCompatibleWith</span><span class="params">(<span class="keyword">const</span> ChunkVersion&amp; other)</span> <span class="keyword">const</span> </span>&#123;</span><br><span class="line">  <span class="keyword">return</span> epoch() == other.epoch() &amp;&amp; majorVersion() == other.majorVersion();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>否则会抛出一个 <code>StaleConfigInfo</code> 异常。</p>
-<h3 id="2-2-异常处理"><a href="#2-2-异常处理" class="headerlink" title="2.2 异常处理"></a>2.2 异常处理</h3><p>该异常在 <code>insertBatchAndHandleErrors()</code> 中进行捕获，并 <code>handleError()</code>。对于异常为 <code>StaleConfigInfo</code> ，处理手段是将其设置到 <code>OperationShardingState</code> 中，并将其结果添加到向上游返回的输出中，且认为代码无须向下执行，继续直接返回给上游。</p>
-<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (ex.extraInfo&lt;StaleConfigInfo&gt;()) &#123;</span><br><span class="line">        <span class="keyword">if</span> (!opCtx-&gt;getClient()-&gt;isInDirectClient()) &#123;</span><br><span class="line">            <span class="keyword">auto</span>&amp; oss = OperationShardingState::<span class="built_in">get</span>(opCtx);</span><br><span class="line">            oss.setShardingOperationFailedStatus(ex.toStatus());</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// Don't try doing more ops since they will fail with the same error.</span></span><br><span class="line">        <span class="comment">// Command reply serializer will handle repeating this error if needed.</span></span><br><span class="line">        out-&gt;results.emplace_back(ex.toStatus());</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br></pre></td></tr></table></figure>
+<h2 id="4-shard节点-处理-configsvrCreateCollection-结果"><a href="#4-shard节点-处理-configsvrCreateCollection-结果" class="headerlink" title="4. shard节点 处理 _configsvrCreateCollection 结果"></a>4. shard节点 处理 <code>_configsvrCreateCollection</code> 结果</h2><p>如 <strong>阶段2</strong> 中提到 <code>ScopedOperationCompletionShardingActions</code> 代码中，如 <code>_configsvrCreateCollection</code> 结果未按预期完成，则打印”Failed to handle CannotImplicitlyCreateCollection exception”日志记录。随后继续进行 <code>insert</code> 请求处理，此时因发生了 <code>CannotImplicitlyCreateCollectionInfo</code> 异常，所以最终 shard节点 向 mongos节点 返回一个 “request doesn’t allow collection to be created implicitly” 错误：</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">&#123; </span><br><span class="line">  n: 0,</span><br><span class="line">  writeErrors: [ &#123; </span><br><span class="line">    index: 0,</span><br><span class="line">    code: 227,</span><br><span class="line">    ns: "xxx.xxx",</span><br><span class="line">    errmsg: "request doesn't allow collection to be created implicitly" </span><br><span class="line">    &#125; ],</span><br><span class="line">  opTime: &#123; ts: Timestamp(1596026022, 1), t: 87 &#125;,</span><br><span class="line">  electionId: ObjectId('7fffffff0000000000000057'),</span><br><span class="line">  ok: 1.0</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 
 
-<p>在 <code>execCommandDatabase()</code> 进入析构流程时，析构 <code>ScopedOperationCompletionShardingActions</code> 会处理上面提及的 <code>StaleConfigInfo</code>。在 <code>onShardVersionMismatch</code> 接管异常处理工作，比对 本地shardVersion 是否大于 接收的版本。如果是则无需处理，否则进行 <code>forceShardFilteringMetadataRefresh</code> 强制刷新。</p>
-<p>而无论是否进行了刷新，都会将 <code>StaleConfigInfo</code> 返回给上游 mongos</p>
-<h2 id="3-mongos-处理-StaleConfigInfo"><a href="#3-mongos-处理-StaleConfigInfo" class="headerlink" title="3. mongos 处理 StaleConfigInfo"></a>3. mongos 处理 <code>StaleConfigInfo</code></h2><p>续 <strong>阶段1</strong> ， <code>MultiStatementTransactionRequestsSender()</code> 收到结果以后，通过 <code>BatchWriteOp::noteBatchResponse()</code> 处理 response</p>
+<h2 id="5-mongos节点-处理第一次-insert-结果"><a href="#5-mongos节点-处理第一次-insert-结果" class="headerlink" title="5. mongos节点 处理第一次 insert 结果"></a>5. mongos节点 处理第一次 <code>insert</code> 结果</h2><p>如 <strong>阶段1</strong> 中描述，mongos节点 <code>BatchWriteExec::executeBatch()</code> 中构造 <code>MultiStatementTransactionRequestsSender()</code> 向下游分发，并等待返回结果。</p>
+<p>收到结果后，通过 <code>BatchWriteOp::noteBatchResponse()</code> 处理 response</p>
 <figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Dispatch was ok, note response</span></span><br><span class="line">batchOp.noteBatchResponse(*batch, batchedCommandResponse, &amp;trackedErrors);</span><br></pre></td></tr></table></figure>
 
 
@@ -431,14 +438,13 @@
 
 
 
-<p>随后仍然会将 <code>StaleConfigInfo</code> 异常信息添加到 targeter 中，并在接下来的逻辑中进行刷新（如果本地版本更老）</p>
-<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (!staleErrors.empty()) &#123;</span><br><span class="line">  noteStaleResponses(staleErrors, &amp;targeter);</span><br><span class="line">&#125;</span><br><span class="line">...</span><br><span class="line">Status refreshStatus = targeter.refreshIfNeeded(opCtx, &amp;targeterChanged);</span><br></pre></td></tr></table></figure>
+<p>随后在 <code>BatchWriteExec::executeBatch()</code> 中判断 <code>batchOp.isFinished()</code> (有 <code>WriteOpState_Error</code> 则为 true，有<code>WriteOpState_Ready</code> 则为false)，此时由于 <strong>阶段4</strong> 中返回的是 <code>CannotImplicitlyCreateCollection</code>，所以 <code>batchOp.isFinished()</code> 的结果为 false。则继续构建 insert 请求下发给 shard节点进行重试。</p>
+<h2 id="6-shard节点-处理第二次-insert-请求-amp-mongos节点-处理第二次-insert-结果"><a href="#6-shard节点-处理第二次-insert-请求-amp-mongos节点-处理第二次-insert-结果" class="headerlink" title="6. shard节点 处理第二次 insert 请求 &amp; mongos节点 处理第二次 insert 结果"></a>6. shard节点 处理第二次 <code>insert</code> 请求 &amp; mongos节点 处理第二次 <code>insert</code> 结果</h2><p>由于 <strong>阶段3</strong> 中 config节点 已经触发 shard节点 完成collection的创建了，所以此时按照 <strong>阶段2</strong> 中的正常流程 <code>insertBatchAndHandleErrors</code> 继续处理完成，最终返回用户一个处理完成的 insert 请求结果</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">&#123; </span><br><span class="line">  n: 1,</span><br><span class="line">  opTime: &#123; ts: Timestamp(1596026028, 6), t: 87 &#125;,</span><br><span class="line">  electionId: ObjectId('7fffffff0000000000000057'),</span><br><span class="line">  ok: 1.0</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 
 
-<p>刷新的方式是首先标记版本过期，需要刷新。然后重新 <code>init</code> 时会获取路由信息而出发刷新。</p>
-<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">Status ChunkManagerTargeter::_refreshNow(OperationContext* opCtx) &#123;</span><br><span class="line">    Grid::<span class="built_in">get</span>(opCtx)-&gt;catalogCache()-&gt;onStaleShardVersion(<span class="built_in">std</span>::<span class="built_in">move</span>(*_routingInfo));</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> init(opCtx);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
+<p>mongos节点 收到结果后按照 <strong>阶段5</strong> 中描述的由于没有error，则将结果组装后正常返回给上游用户</p>
 
       
     </div>
@@ -498,8 +504,8 @@
         <div class="post-nav">
           <div class="post-nav-next post-nav-item">
             
-              <a href="/MongoDB/sharding/ImplicitlyCreateCollection/MongoDB-sharding-ImplicitlyCreateCollection/" rel="next" title="MongoDB sharding实例 隐式创建collection">
-                <i class="fa fa-chevron-left"></i> MongoDB sharding实例 隐式创建collection
+              <a href="/lock/OCC/OCC-overview/" rel="next" title="关于乐观锁的探索">
+                <i class="fa fa-chevron-left"></i> 关于乐观锁的探索
               </a>
             
           </div>
@@ -508,8 +514,8 @@
 
           <div class="post-nav-prev post-nav-item">
             
-              <a href="/MongoDB/sharding/MongoDB-sharding-troubleshoot-cacheRefreshX/" rel="prev" title="MongoDB 路由表刷新导致响应慢">
-                MongoDB 路由表刷新导致响应慢 <i class="fa fa-chevron-right"></i>
+              <a href="/MongoDB/sharding/StaleConfig/MongoDB-sharding-StaleConfig/" rel="prev" title="MongoDB sharding实例 路由刷新策略">
+                MongoDB sharding实例 路由刷新策略 <i class="fa fa-chevron-right"></i>
               </a>
             
           </div>
@@ -658,7 +664,7 @@
             
 
             
-              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-mongos节点-收到用户-insert-请求"><span class="nav-number">1.</span> <span class="nav-text">1. mongos节点 收到用户 insert 请求</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-shard节点-收到-mongos节点-转发过来携带-shardVersion-的-insert-请求"><span class="nav-number">2.</span> <span class="nav-text">2. shard节点 收到 mongos节点 转发过来携带 shardVersion 的 insert 请求</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1-是否可以进行写入"><span class="nav-number">2.1.</span> <span class="nav-text">2.1 是否可以进行写入</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-异常处理"><span class="nav-number">2.2.</span> <span class="nav-text">2.2 异常处理</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-mongos-处理-StaleConfigInfo"><span class="nav-number">3.</span> <span class="nav-text">3. mongos 处理 StaleConfigInfo</span></a></li></ol></div>
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-mongos节点-收到用户-insert-请求"><span class="nav-number">1.</span> <span class="nav-text">1. mongos节点 收到用户 insert 请求</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-shard节点-收到-mongos节点-转发过来携带-allowImplicitCollectionCreation-false的-insert-请求"><span class="nav-number">2.</span> <span class="nav-text">2. shard节点 收到 mongos节点 转发过来携带 allowImplicitCollectionCreation&#x3D;false的 insert 请求</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-config节点-处理-configsvrCreateCollection-请求"><span class="nav-number">3.</span> <span class="nav-text">3. config节点 处理 _configsvrCreateCollection 请求</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-shard节点-处理-configsvrCreateCollection-结果"><span class="nav-number">4.</span> <span class="nav-text">4. shard节点 处理 _configsvrCreateCollection 结果</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-mongos节点-处理第一次-insert-结果"><span class="nav-number">5.</span> <span class="nav-text">5. mongos节点 处理第一次 insert 结果</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-shard节点-处理第二次-insert-请求-amp-mongos节点-处理第二次-insert-结果"><span class="nav-number">6.</span> <span class="nav-text">6. shard节点 处理第二次 insert 请求 &amp; mongos节点 处理第二次 insert 结果</span></a></li></ol></div>
             
 
           </div>

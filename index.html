@@ -780,6 +780,241 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/ImplicitlyCreateCollection/MongoDB-sharding-ImplicitlyCreateCollection/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/sharding/ImplicitlyCreateCollection/MongoDB-sharding-ImplicitlyCreateCollection/" itemprop="url">MongoDB sharding实例 隐式创建collection</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-07-31T13:21:15+08:00">
+                2020-07-31
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/" itemprop="url" rel="index">
+                    <span itemprop="name">sharding</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/ImplicitlyCreateCollection/" itemprop="url" rel="index">
+                    <span itemprop="name">ImplicitlyCreateCollection</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="1-mongos节点-收到用户-insert-请求"><a href="#1-mongos节点-收到用户-insert-请求" class="headerlink" title="1. mongos节点 收到用户 insert 请求"></a>1. mongos节点 收到用户 insert 请求</h2><p>mongos 收到一个 insert 请求后，会经过如下流程处理将请求发送给 shard 节点：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ServiceEntryPointMongos::handleRequest() --&gt; Strategy::clientCommand() --&gt; runCommand() --&gt; execCommandClient() --&gt; ClusterWriteCmd::InvocationBase::run() --&gt; ClusterWriteCmd::InvocationBase::runImpl() --&gt; ClusterWriter::write() --&gt; BatchWriteExec::executeBatch() --&gt; MultiStatementTransactionRequestsSender()</span><br></pre></td></tr></table></figure>
+
+<p>在发送给 shard 节点的请求中，会通过 <code>allowImplicitCollectionCreation</code> 字段来控制是否允许 shard 节点隐式创建collection。sharding状态下，该字段基本为 false，即不允许 shard 节点隐式创建collection</p>
+<ul>
+<li>对于 <code>insert</code> / <code>update</code> / <code>delete</code> 这三类请求，会在 <code>ClusterWriteCmd::InvocationBase::runImpl()</code> 中进行 <code>batchedRequest.setAllowImplicitCreate(false);</code> </li>
+<li><code>src/mongo/s/cluster_commands_helpers.cpp</code> 中也提供了 <code>scatterGatherVersionedTargetByRoutingTable</code> / <code>scatterGatherUnversionedTargetAllShards</code> / <code>scatterGatherOnlyVersionIfUnsharded</code> / <code>executeCommandAgainstDatabasePrimary</code> 函数。如果请求包中不显式声明 <code>allowImplicitCollectionCreation</code> ，则默认为 <code>false</code> <ul>
+<li>但是 <strong>renameCollection</strong> 及 <strong>covertToCapped</strong> 会将 <code>appendAllowImplicitCreate</code> 声明为 <code>true</code>(可以隐式创建collection)</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>shard节点可以直接创建collection，即为<strong>隐式创建collection</strong>(rs实例均采用这种方式)。否则需要和 config 交互来完成 collection 的创建，即为<strong>显式创建collection</strong></p>
+</blockquote>
+<h2 id="2-shard节点-收到-mongos节点-转发过来携带-allowImplicitCollectionCreation-false的-insert-请求"><a href="#2-shard节点-收到-mongos节点-转发过来携带-allowImplicitCollectionCreation-false的-insert-请求" class="headerlink" title="2. shard节点 收到 mongos节点 转发过来携带 allowImplicitCollectionCreation=false的 insert 请求"></a>2. shard节点 收到 mongos节点 转发过来携带 <code>allowImplicitCollectionCreation=false</code>的 insert 请求</h2><p>正常情况下， shard节点 按照如下流程处理 insert 请求：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ServiceEntryPointMongod::handleRequest() --&gt; ServiceEntryPointCommon::handleRequest() --&gt; receivedCommands() --&gt; execCommandDatabase() --&gt; runCommandImpl() --&gt; WriteCommand::InvocationBase::run() --&gt; CmdInsert::Invocation::runImpl() --&gt; performInserts() --&gt; insertBatchAndHandleErrors() --&gt; acquireCollection() --&gt; makeCollection() --&gt; DatabaseImpl::userCreateNS() --&gt; createCollection()</span><br></pre></td></tr></table></figure>
+
+
+
+<p>而由于 <code>allowImplicitCollectionCreation=false</code> ，在 <code>execCommandDatabase()</code> 时会将 <code>allowImplicitCollectionCreation</code> 设置到 <code>OperationShardingState</code> 中。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">oss.setAllowImplicitCollectionCreation(allowImplicitCollectionCreationField);</span><br></pre></td></tr></table></figure>
+
+
+
+<p><code>createCollection()</code> 中则获取该值，判断为false，进行uassert，产生异常，向上抛出。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">uassert(CannotImplicitlyCreateCollectionInfo(nss), <span class="string">"request doesn't allow collection to be created implicitly"</span>, OperationShardingState::<span class="built_in">get</span>(opCtx).allowImplicitCollectionCreation());</span><br></pre></td></tr></table></figure>
+
+
+
+<p>异常在 <code>insertBatchAndHandleErrors</code> 中被 catch 住，在 <code>handleError()</code> 中判断异常为 <code>CannotImplicitlyCreateCollectionInfo</code> ，将异常信息设置到 <code>OperationShardingState</code> 中。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (ex.extraInfo&lt;CannotImplicitlyCreateCollectionInfo&gt;()) &#123;</span><br><span class="line">  <span class="keyword">auto</span>&amp; oss = OperationShardingState::<span class="built_in">get</span>(opCtx);</span><br><span class="line">  oss.setShardingOperationFailedStatus(ex.toStatus());</span><br><span class="line">  ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>至此原有处理流程结束， 退回到 <code>execCommandDatabase()</code> 中触发析构逻辑，在 <code>ScopedOperationCompletionShardingActions</code> 进行析构的时候处理之前设置到 <code>OperationShardingState</code> 中的异常状态。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> scoped = behaviors.scopedOperationCompletionShardingActions(opCtx);</span><br></pre></td></tr></table></figure>
+
+
+
+<p><code>ScopedOperationCompletionShardingActions</code> 的析构函数中，会通过 <code>onCannotImplicitlyCreateCollection</code> 函数向 config节点 下发一个 <code>_configsvrCreateCollection</code> 请求。发生异常则日志记录</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">ScopedOperationCompletionShardingActions::~ScopedOperationCompletionShardingActions() <span class="keyword">noexcept</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (<span class="keyword">auto</span> cannotImplicitCreateCollInfo = status-&gt;extraInfo&lt;CannotImplicitlyCreateCollectionInfo&gt;()) &#123;</span><br><span class="line">        <span class="keyword">if</span> (ShardingState::<span class="built_in">get</span>(_opCtx)-&gt;enabled()) &#123;</span><br><span class="line">            <span class="keyword">auto</span> handleCannotImplicitCreateStatus = onCannotImplicitlyCreateCollection(_opCtx, cannotImplicitCreateCollInfo-&gt;getNss());</span><br><span class="line">            <span class="keyword">if</span> (!handleCannotImplicitCreateStatus.isOK())</span><br><span class="line">                <span class="built_in">log</span>() &lt;&lt; <span class="string">"Failed to handle CannotImplicitlyCreateCollection exception"</span> &lt;&lt; causedBy(redact(handleCannotImplicitCreateStatus));</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="3-config节点-处理-configsvrCreateCollection-请求"><a href="#3-config节点-处理-configsvrCreateCollection-请求" class="headerlink" title="3. config节点 处理 _configsvrCreateCollection 请求"></a>3. config节点 处理 <code>_configsvrCreateCollection</code> 请求</h2><p>config节点 收到 <code>_configsvrCreateCollection</code> 请求后，在 <code>ConfigSvrCreateCollectionCommand::typedRun()</code> 中进行处理</p>
+<ol>
+<li>首先通过和 <code>config.locks</code> 交互获取 <code>collection</code> 对应 namespace 和 database 的分布式锁</li>
+<li>然后通过 <code>ShardingCatalogManager::createCollection()</code> 和 primaryShard 交互，完成collection创建</li>
+</ol>
+<h2 id="4-shard节点-处理-configsvrCreateCollection-结果"><a href="#4-shard节点-处理-configsvrCreateCollection-结果" class="headerlink" title="4. shard节点 处理 _configsvrCreateCollection 结果"></a>4. shard节点 处理 <code>_configsvrCreateCollection</code> 结果</h2><p>如 <strong>阶段2</strong> 中提到 <code>ScopedOperationCompletionShardingActions</code> 代码中，如 <code>_configsvrCreateCollection</code> 结果未按预期完成，则打印”Failed to handle CannotImplicitlyCreateCollection exception”日志记录。随后继续进行 <code>insert</code> 请求处理，此时因发生了 <code>CannotImplicitlyCreateCollectionInfo</code> 异常，所以最终 shard节点 向 mongos节点 返回一个 “request doesn’t allow collection to be created implicitly” 错误：</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">&#123; </span><br><span class="line">  n: 0,</span><br><span class="line">  writeErrors: [ &#123; </span><br><span class="line">    index: 0,</span><br><span class="line">    code: 227,</span><br><span class="line">    ns: "xxx.xxx",</span><br><span class="line">    errmsg: "request doesn't allow collection to be created implicitly" </span><br><span class="line">    &#125; ],</span><br><span class="line">  opTime: &#123; ts: Timestamp(1596026022, 1), t: 87 &#125;,</span><br><span class="line">  electionId: ObjectId('7fffffff0000000000000057'),</span><br><span class="line">  ok: 1.0</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="5-mongos节点-处理第一次-insert-结果"><a href="#5-mongos节点-处理第一次-insert-结果" class="headerlink" title="5. mongos节点 处理第一次 insert 结果"></a>5. mongos节点 处理第一次 <code>insert</code> 结果</h2><p>如 <strong>阶段1</strong> 中描述，mongos节点 <code>BatchWriteExec::executeBatch()</code> 中构造 <code>MultiStatementTransactionRequestsSender()</code> 向下游分发，并等待返回结果。</p>
+<p>收到结果后，通过 <code>BatchWriteOp::noteBatchResponse()</code> 处理 response</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Dispatch was ok, note response</span></span><br><span class="line">batchOp.noteBatchResponse(*batch, batchedCommandResponse, &amp;trackedErrors);</span><br></pre></td></tr></table></figure>
+
+
+
+<p><code>BatchWriteOp::noteBatchResponse()</code> 的入参中有一个 <code>BatchedCommandResponse</code> 对象记录所有节点返回的结果。而 <code>BatchWriteOp</code> 中的 <code>_writeOps</code> 则记录了向各个节点下发的请求，根据response结果一一标记对应的request。最终在 <code>WriteOp::_updateOpState()</code> 中对 当前writeOp 进行标记。如果 <code>writeError == StaleShardVersion</code> 或者 <code>writeError == CannotImplicitlyCreateCollection</code>，则当前 writeOp 的状态仍然保留为 <code>WriteOpState_Ready</code>，而如果遇到其他异常则被标记位 <code>WriteOpState_Error</code>，请求正常完成则被标记为 <code>WriteOpState_Completed</code>。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Finish the response (with error, if needed)</span></span><br><span class="line"><span class="keyword">if</span> (<span class="literal">NULL</span> == writeError) &#123;</span><br><span class="line">    <span class="keyword">if</span> (!ordered || !lastError) &#123;</span><br><span class="line">        writeOp.noteWriteComplete(*<span class="built_in">write</span>);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// We didn't actually apply this write - cancel so we can retarget</span></span><br><span class="line">        dassert(writeOp.getNumTargeted() == <span class="number">1u</span>);</span><br><span class="line">        writeOp.cancelWrites(lastError);</span><br><span class="line">    &#125;</span><br><span class="line">&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    writeOp.noteWriteError(*<span class="built_in">write</span>, *writeError);</span><br><span class="line">    lastError = writeError;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>随后在 <code>BatchWriteExec::executeBatch()</code> 中判断 <code>batchOp.isFinished()</code> (有 <code>WriteOpState_Error</code> 则为 true，有<code>WriteOpState_Ready</code> 则为false)，此时由于 <strong>阶段4</strong> 中返回的是 <code>CannotImplicitlyCreateCollection</code>，所以 <code>batchOp.isFinished()</code> 的结果为 false。则继续构建 insert 请求下发给 shard节点进行重试。</p>
+<h2 id="6-shard节点-处理第二次-insert-请求-amp-mongos节点-处理第二次-insert-结果"><a href="#6-shard节点-处理第二次-insert-请求-amp-mongos节点-处理第二次-insert-结果" class="headerlink" title="6. shard节点 处理第二次 insert 请求 &amp; mongos节点 处理第二次 insert 结果"></a>6. shard节点 处理第二次 <code>insert</code> 请求 &amp; mongos节点 处理第二次 <code>insert</code> 结果</h2><p>由于 <strong>阶段3</strong> 中 config节点 已经触发 shard节点 完成collection的创建了，所以此时按照 <strong>阶段2</strong> 中的正常流程 <code>insertBatchAndHandleErrors</code> 继续处理完成，最终返回用户一个处理完成的 insert 请求结果</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">&#123; </span><br><span class="line">  n: 1,</span><br><span class="line">  opTime: &#123; ts: Timestamp(1596026028, 6), t: 87 &#125;,</span><br><span class="line">  electionId: ObjectId('7fffffff0000000000000057'),</span><br><span class="line">  ok: 1.0</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>mongos节点 收到结果后按照 <strong>阶段5</strong> 中描述的由于没有error，则将结果组装后正常返回给上游用户</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/lock/OCC/OCC-overview/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -2450,205 +2685,6 @@
 
 
     
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/protocol/TOTP/protocol-TOTP-overview/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/protocol/TOTP/protocol-TOTP-overview/" itemprop="url">【一次性密码】TOTP</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-12-08T20:45:00+08:00">
-                2015-12-08
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/protocol/" itemprop="url" rel="index">
-                    <span itemprop="name">protocol</span>
-                  </a>
-                </span>
-
-                
-                
-                  ， 
-                
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/protocol/TOTP/" itemprop="url" rel="index">
-                    <span itemprop="name">TOTP</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <h2 id="1-OTP"><a href="#1-OTP" class="headerlink" title="1. OTP"></a>1. OTP</h2><p><code>OTP(One-Time Password)</code>译为一次性密码，也称动态口令。是使用密码技术实现的在客户端和服务器之间通过共享秘密的一种认证技术，是一种强认证技术，是增强目前静态口令认证的一种非常方便技术手段，是一种重要的双因素认证技术。</p>
-<h3 id="1-1-OTP的认证原理"><a href="#1-1-OTP的认证原理" class="headerlink" title="1.1 OTP的认证原理"></a>1.1 OTP的认证原理</h3><p>动态口令的基本认证原理是在认证双方共享密钥，也称种子密钥，并使用的同一个种子密钥对某一个事件计数、或时间值、或者是异步挑战数进行密码算法计算，使用的算法有<code>对称算法</code>、<code>HASH</code>、<code>HMAC</code>，之后比较计算值是否一致进行认证。可以做到一次一个动态口令，使用后作废，口令长度通常为6-8个数字，使用方便，与通常的静态口令认证方式类似.</p>
-<h3 id="1-3-OTP的实现方式"><a href="#1-3-OTP的实现方式" class="headerlink" title="1.3 OTP的实现方式"></a>1.3 OTP的实现方式</h3><ol>
-<li>时间同步(<code>TOTP</code>)</li>
-<li>事件同步(<code>HOTP</code>)</li>
-<li>挑战/应答(<code>OCRA</code>)</li>
-</ol>
-<h2 id="2-HOTP"><a href="#2-HOTP" class="headerlink" title="2. HOTP"></a>2. HOTP</h2><p><code>HOTP(HMAC-base On-Time Password)</code>译为基于HMAC的一次性密码，也称事件同步的动态密码。</p>
-<h3 id="2-1-HOTP的工作原理"><a href="#2-1-HOTP的工作原理" class="headerlink" title="2.1 HOTP的工作原理"></a>2.1 HOTP的工作原理</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">HTOP(K,C) &#x3D; Truncate(HMAC-SHA-1(K,C))</span><br></pre></td></tr></table></figure>
-
-
-<p>客户端和服务器事先协商好一个<code>密钥K</code>，用于一次性密码的生成过程。此外，客户端和服务器各有一个<code>计数器C</code>，并且事先将计数值同步。而<code>Truncate</code>是为了获得一个符合<code>HTOP</code>要求的值。</p>
-<h2 id="3-TOTP"><a href="#3-TOTP" class="headerlink" title="3 TOTP"></a>3 TOTP</h2><p><code>TOTP(Time-base One-Time Password)</code>译为基于时间的一次性密码，也称时间同步的动态密码.</p>
-<h3 id="3-1-TOTP的工作原理"><a href="#3-1-TOTP的工作原理" class="headerlink" title="3.1 TOTP的工作原理"></a>3.1 TOTP的工作原理</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">TOTP &#x3D; Truncate(HMAC-SHA-1(K,T))</span><br></pre></td></tr></table></figure>
-
-<p><code>TOTP</code>是<code>HOTP</code>的一个变种，将<code>HOTP</code>中的<code>计数器C</code>替换为依托时间的<code>参数T</code>，T是由当前时间(<code>CurrentUnixTime</code>、初始时间(T0)、步长(X)决定的。即：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">T &#x3D; (Current Unix time - T0) &#x2F; X</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li><code>CurrentUnixTime</code>：当前的Unix时间。</li>
-<li><code>T0</code>： 开始计步初始化时间，默认为0</li>
-<li><code>X</code> : 步长，默认情况下为30s</li>
-</ul>
-<h3 id="3-2-TOTP的要求"><a href="#3-2-TOTP的要求" class="headerlink" title="3.2 TOTP的要求"></a>3.2 TOTP的要求</h3><ol>
-<li>客户端和服务器必须能够彼此知道或者推算出对方的Unix Time</li>
-<li>客户端和服务器端必须共享一个密钥</li>
-<li>算法必须使用HOTP作为其关键实现环节</li>
-<li>客户端和服务器端必须使用相同的步长X</li>
-<li>每一个客户端必须拥有不同的密钥</li>
-<li>密钥的生成必须足够随机</li>
-<li>密钥必须储存在防篡改的设备上，而且不能在不安全的情况下被访问或使用。</li>
-<li>对该算法中T的实现必须大于<code>int32</code>，因为它在2038年将超出上限。</li>
-<li>T0和X的协商必须在之前的步骤中就已经做好了。</li>
-</ol>
-<h3 id="3-3-安全性考虑"><a href="#3-3-安全性考虑" class="headerlink" title="3.3 安全性考虑"></a>3.3 安全性考虑</h3><h4 id="3-3-1-安全性分析"><a href="#3-3-1-安全性分析" class="headerlink" title="3.3.1 安全性分析"></a>3.3.1 安全性分析</h4><p>该算法的安全性和健壮性完全依赖于其关键实现环节<code>HOTP</code>。</p>
-<p>安全性分析的结果是：在所有的测试中，该算法的结果均匀的、独立的分布。这个分析显示，最好的攻击和破解<code>TOTP(HOTP)</code>的方法是暴力破解。而在算法要求环节，要求key必须有足够的随机性。</p>
-<h4 id="3-3-2-时延兼容"><a href="#3-3-2-时延兼容" class="headerlink" title="3.3.2 时延兼容"></a>3.3.2 时延兼容</h4><p>在同一个步长内，动态密码生成的结果是一样的。当一个验证系统获得这个动态密码的时候，它并不知道动态密码的生产者是在哪个步长内产生的密码。由于网络的原因，客户端生成密码的时间和服务器接受密码的时间可能差距会很大，很有可能使得这2个时间不在同一个步长内。当一个动态密码产生在一个步长的结尾，服务器收到的密码很有可能在下一个步长的开始。</p>
-<p>验证系统应该设置一个策略允许动态密码的传输时延，不应该只验证当前步长的动态密码，还应该验证之前几个步长的动态密码。但越大的传输时延窗口设置，就会带来越大的风险被攻击，我们推荐最多设置一个时延窗口来兼容传输延时。</p>
-<h4 id="3-3-3-步长设置"><a href="#3-3-3-步长设置" class="headerlink" title="3.3.3 步长设置"></a>3.3.3 步长设置</h4><p>步长大小的设置，直接影响安全性和可用性:</p>
-<ol>
-<li>一个越大的步长，就会导致一个越大的窗口被攻击。当一个动态密码被生成而且在其有效期内暴露在第三方环境下，那么第三方系统就可以在该动态密码无效前使用这个密码。</li>
-<li>我们推荐默认的步长时间是<code>30s</code>，这个默认值是在权衡了安全性和可用性的基础上提出的。</li>
-<li>下一个动态密码肯定会在下一个步长生成，用户必须等待当前步长的结束。这个等待时间的理想值会随着步长的设置而增大。一个太长的窗口设置不使用网络用户登录这种场景，用户可能等不了一个步长的时间，就放弃登录。</li>
-</ol>
-<blockquote>
-<p>参考资料：<br><a href="http://blog.csdn.net/janronehoo/article/details/7590976" target="_blank" rel="noopener">http://blog.csdn.net/janronehoo/article/details/7590976</a><br><a href="http://www.dannysite.com/blog/165/" target="_blank" rel="noopener">http://www.dannysite.com/blog/165/</a><br><a href="https://tools.ietf.org/html/rfc6238" target="_blank" rel="noopener">https://tools.ietf.org/html/rfc6238</a></p>
-</blockquote>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
   </section>
 
   
@@ -2699,7 +2735,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">14</span>
+                  <span class="site-state-item-count">15</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -2710,7 +2746,7 @@
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">14</span>
+                  <span class="site-state-item-count">15</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
