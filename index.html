@@ -551,6 +551,235 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/StaleConfig/MongoDB-sharding-StaleConfig/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/sharding/StaleConfig/MongoDB-sharding-StaleConfig/" itemprop="url">MongoDB sharding实例 路由刷新策略</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-09-21T10:05:48+08:00">
+                2020-09-21
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/" itemprop="url" rel="index">
+                    <span itemprop="name">sharding</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/StaleConfig/" itemprop="url" rel="index">
+                    <span itemprop="name">StaleConfig</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="1-mongos节点-收到用户-insert-请求"><a href="#1-mongos节点-收到用户-insert-请求" class="headerlink" title="1. mongos节点 收到用户 insert 请求"></a>1. mongos节点 收到用户 insert 请求</h2><p>mongos 收到一个 insert 请求后，会经过如下流程处理将请求发送给 shard 节点：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ServiceEntryPointMongos::handleRequest() --&gt; Strategy::clientCommand() --&gt; runCommand() --&gt; execCommandClient() --&gt; ClusterWriteCmd::InvocationBase::run() --&gt; ClusterWriteCmd::InvocationBase::runImpl() --&gt; ClusterWriter::write() --&gt; BatchWriteExec::executeBatch() --&gt; MultiStatementTransactionRequestsSender()</span><br></pre></td></tr></table></figure>
+
+<p>在 <code>ClusterWriter::write()</code> 中会准备一个 <code>ChunkManagerTargeter</code> 来维保存目标 namespace 在 <code>CatalogCache</code> 中的路由信息，方便后续请求处理。</p>
+<p>主要代码逻辑在 <code>BatchWriteExec::executeBatch()</code> 中，主要是封装 <code>BatchWriteOp</code> 的几个核心方法来完成具体的请求处理工作：</p>
+<p>首先，根据请求的目标shard、order 等参数来将请求分成多个批次。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Status targetStatus = batchOp.targetBatch(targeter, recordTargetErrors, &amp;childBatches);</span><br></pre></td></tr></table></figure>
+
+<p>然后逐批构造请求，并将请求通过 <code>MultiStatementTransactionRequestsSender</code> 依次发送到shard，并等待接收结果。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> <span class="keyword">auto</span> request = [&amp;] &#123; <span class="keyword">const</span> <span class="keyword">auto</span> shardBatchRequest(batchOp.buildBatchRequest(*nextBatch));</span><br><span class="line">...</span><br><span class="line"><span class="function">MultiStatementTransactionRequestsSender <span class="title">ars</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">  opCtx,</span></span></span><br><span class="line"><span class="function"><span class="params">  Grid::<span class="built_in">get</span>(opCtx)-&gt;getExecutorPool()-&gt;getArbitraryExecutor(),</span></span></span><br><span class="line"><span class="function"><span class="params">  clientRequest.getNS().db().toString(),</span></span></span><br><span class="line"><span class="function"><span class="params">  requests,</span></span></span><br><span class="line"><span class="function"><span class="params">  kPrimaryOnlyReadPreference,</span></span></span><br><span class="line"><span class="function"><span class="params">  isRetryableWrite ? Shard::RetryPolicy::kIdempotent : Shard::RetryPolicy::kNoRetry)</span></span>;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>在请求构造(<code>BatchWriteOp::buildBatchRequest()</code>)的的时候，设置请求的 <code>shardVersion</code>。这里实际是为请求设置了一个 <code>shardVersion</code> 字段，设置的值则为刚开始提到的 <code>CatalogCache</code> 中保存的 namespace 路由信息。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">request.setShardVersion(targetedBatch.getEndpoint().shardVersion);</span><br></pre></td></tr></table></figure>
+
+
+
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">&#123; </span><br><span class="line">  insert: "sCollName", </span><br><span class="line">  documents: [ &#123; _id: ObjectId('5f685824c800cd1689ca3be8'), name: xxxx &#125; ], </span><br><span class="line">  shardVersion: [ Timestamp(5, 1), ObjectId('5f3ce659e6957ccdd6a56364') ], </span><br><span class="line">  $db: "sdb"</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="2-shard节点-收到-mongos节点-转发过来携带-shardVersion-的-insert-请求"><a href="#2-shard节点-收到-mongos节点-转发过来携带-shardVersion-的-insert-请求" class="headerlink" title="2. shard节点 收到 mongos节点 转发过来携带 shardVersion 的 insert 请求"></a>2. shard节点 收到 mongos节点 转发过来携带 <code>shardVersion</code> 的 insert 请求</h2><p>正常情况下， shard节点 按照如下流程处理 insert 请求：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ServiceEntryPointMongod::handleRequest() --&gt; ServiceEntryPointCommon::handleRequest() --&gt; receivedCommands() --&gt; execCommandDatabase() --&gt; runCommandImpl() --&gt; WriteCommand::InvocationBase::run() --&gt; CmdInsert::Invocation::runImpl() --&gt; performInserts() --&gt; insertBatchAndHandleErrors() --&gt; acquireCollection()</span><br></pre></td></tr></table></figure>
+
+
+
+<p>在 <code>execCommandDatabase()</code> 中，会提取请求中的 <code>shardVersion</code>和<code>databaseVersion</code> 字段信息，存储到 <code>OperationShardingState</code> 中。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (!opCtx-&gt;getClient()-&gt;isInDirectClient() &amp;&amp;</span><br><span class="line">            readConcernArgs.getLevel() != repl::ReadConcernLevel::kAvailableReadConcern &amp;&amp;</span><br><span class="line">            (iAmPrimary ||</span><br><span class="line">             (readConcernArgs.hasLevel() || readConcernArgs.getArgsAfterClusterTime()))) &#123;</span><br><span class="line">  oss.initializeClientRoutingVersions(invocation-&gt;ns(), request.body);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>只有执行了<code>oss.initializeClientRoutingVersions()</code>，后续才会进行shardVersion比对。那么不进行shardVersion比对的场景是：</p>
+<ol>
+<li>reacConcern指定为available</li>
+<li>从secondary读取且readConcern没有指定任何的参数</li>
+</ol>
+<h3 id="2-1-是否可以进行写入"><a href="#2-1-是否可以进行写入" class="headerlink" title="2.1 是否可以进行写入"></a>2.1 是否可以进行写入</h3><p>在 <code>acquireCollection()</code> 时，会判断请求是否可以进行写入( <code>assertCanWrite_inlock()</code> )。判断的标准则是比对 <strong>当前节点存储的shardVersion</strong> 和 <strong>收到mongos发送来的shardVersion</strong>，比较二者 <code>epoch &amp; majorVersion</code> 是否相同，相同则认为可以进行写入。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Can we write to this data and not have a problem?</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">isWriteCompatibleWith</span><span class="params">(<span class="keyword">const</span> ChunkVersion&amp; other)</span> <span class="keyword">const</span> </span>&#123;</span><br><span class="line">  <span class="keyword">return</span> epoch() == other.epoch() &amp;&amp; majorVersion() == other.majorVersion();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>否则会抛出一个 <code>StaleConfigInfo</code> 异常。</p>
+<h3 id="2-2-异常处理"><a href="#2-2-异常处理" class="headerlink" title="2.2 异常处理"></a>2.2 异常处理</h3><p>该异常在 <code>insertBatchAndHandleErrors()</code> 中进行捕获，并 <code>handleError()</code>。对于异常为 <code>StaleConfigInfo</code> ，处理手段是将其设置到 <code>OperationShardingState</code> 中，并将其结果添加到向上游返回的输出中，且认为代码无须向下执行，继续直接返回给上游。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (ex.extraInfo&lt;StaleConfigInfo&gt;()) &#123;</span><br><span class="line">        <span class="keyword">if</span> (!opCtx-&gt;getClient()-&gt;isInDirectClient()) &#123;</span><br><span class="line">            <span class="keyword">auto</span>&amp; oss = OperationShardingState::<span class="built_in">get</span>(opCtx);</span><br><span class="line">            oss.setShardingOperationFailedStatus(ex.toStatus());</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// Don't try doing more ops since they will fail with the same error.</span></span><br><span class="line">        <span class="comment">// Command reply serializer will handle repeating this error if needed.</span></span><br><span class="line">        out-&gt;results.emplace_back(ex.toStatus());</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>在 <code>execCommandDatabase()</code> 进入析构流程时，析构 <code>ScopedOperationCompletionShardingActions</code> 会处理上面提及的 <code>StaleConfigInfo</code>。在 <code>onShardVersionMismatch</code> 接管异常处理工作，比对 本地shardVersion 是否大于 接收的版本。如果是则无需处理，否则进行 <code>forceShardFilteringMetadataRefresh</code> 强制刷新。</p>
+<p>而无论是否进行了刷新，都会将 <code>StaleConfigInfo</code> 返回给上游 mongos</p>
+<h2 id="3-mongos-处理-StaleConfigInfo"><a href="#3-mongos-处理-StaleConfigInfo" class="headerlink" title="3. mongos 处理 StaleConfigInfo"></a>3. mongos 处理 <code>StaleConfigInfo</code></h2><p>续 <strong>阶段1</strong> ， <code>MultiStatementTransactionRequestsSender()</code> 收到结果以后，通过 <code>BatchWriteOp::noteBatchResponse()</code> 处理 response</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Dispatch was ok, note response</span></span><br><span class="line">batchOp.noteBatchResponse(*batch, batchedCommandResponse, &amp;trackedErrors);</span><br></pre></td></tr></table></figure>
+
+
+
+<p><code>BatchWriteOp::noteBatchResponse()</code> 的入参中有一个 <code>BatchedCommandResponse</code> 对象记录所有节点返回的结果。而 <code>BatchWriteOp</code> 中的 <code>_writeOps</code> 则记录了向各个节点下发的请求，根据response结果一一标记对应的request。最终在 <code>WriteOp::_updateOpState()</code> 中对 当前writeOp 进行标记。如果 <code>writeError == StaleShardVersion</code> 或者 <code>writeError == CannotImplicitlyCreateCollection</code>，则当前 writeOp 的状态仍然保留为 <code>WriteOpState_Ready</code>，而如果遇到其他异常则被标记位 <code>WriteOpState_Error</code>，请求正常完成则被标记为 <code>WriteOpState_Completed</code>。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Finish the response (with error, if needed)</span></span><br><span class="line"><span class="keyword">if</span> (<span class="literal">NULL</span> == writeError) &#123;</span><br><span class="line">    <span class="keyword">if</span> (!ordered || !lastError) &#123;</span><br><span class="line">        writeOp.noteWriteComplete(*<span class="built_in">write</span>);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// We didn't actually apply this write - cancel so we can retarget</span></span><br><span class="line">        dassert(writeOp.getNumTargeted() == <span class="number">1u</span>);</span><br><span class="line">        writeOp.cancelWrites(lastError);</span><br><span class="line">    &#125;</span><br><span class="line">&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    writeOp.noteWriteError(*<span class="built_in">write</span>, *writeError);</span><br><span class="line">    lastError = writeError;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>随后仍然会将 <code>StaleConfigInfo</code> 异常信息添加到 targeter 中，并在接下来的逻辑中进行刷新（如果本地版本更老）</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (!staleErrors.empty()) &#123;</span><br><span class="line">  noteStaleResponses(staleErrors, &amp;targeter);</span><br><span class="line">&#125;</span><br><span class="line">...</span><br><span class="line">Status refreshStatus = targeter.refreshIfNeeded(opCtx, &amp;targeterChanged);</span><br></pre></td></tr></table></figure>
+
+
+
+<p>刷新的方式是首先标记版本过期，需要刷新。然后重新 <code>init</code> 时会获取路由信息而出发刷新。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">Status ChunkManagerTargeter::_refreshNow(OperationContext* opCtx) &#123;</span><br><span class="line">    Grid::<span class="built_in">get</span>(opCtx)-&gt;catalogCache()-&gt;onStaleShardVersion(<span class="built_in">std</span>::<span class="built_in">move</span>(*_routingInfo));</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> init(opCtx);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/lock/OCC/OCC-overview/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -2420,184 +2649,6 @@
 
 
     
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/shell/shell-wait/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/shell/shell-wait/" itemprop="url">【shell】我的wait为什么不能用</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-10-18T20:01:48+08:00">
-                2015-10-18
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/shell/" itemprop="url" rel="index">
-                    <span itemprop="name">shell</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <p>希望实现这样的一个功能：主脚本会运行几个后台进程，并希望这几个后台进程运行完之后，主进程才会退出。</p>
-<p>RT,设想一个文件a，希望a的每一行都表示一个后台进程，有如下内容：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">$ cat a</span><br><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td></tr></table></figure>
-
-<h2 id="方式1"><a href="#方式1" class="headerlink" title="方式1"></a>方式1</h2><p>脚本<code>test_wait_1</code>这样写：</p>
-<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/bash</span></span><br><span class="line"><span class="meta">#</span><span class="bash"> filename:test_wait_1</span></span><br><span class="line"></span><br><span class="line">cat a | while read line</span><br><span class="line">do</span><br><span class="line">    echo $line &amp;</span><br><span class="line">done</span><br><span class="line">wait</span><br><span class="line">echo "wait done"</span><br></pre></td></tr></table></figure>
-
-<p>运行结果：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">#result</span><br><span class="line">$ bash test_wait_1</span><br><span class="line">1</span><br><span class="line">5</span><br><span class="line">3</span><br><span class="line">wait done</span><br><span class="line">4</span><br><span class="line">2</span><br></pre></td></tr></table></figure>
-
-<p>显然，不尽如人意。</p>
-<h2 id="方式2"><a href="#方式2" class="headerlink" title="方式2"></a>方式2</h2><p>脚本<code>test_wait_2</code>,做了一下修改：</p>
-<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/bash</span></span><br><span class="line"><span class="meta">#</span><span class="bash"> filename:test_wait_2</span></span><br><span class="line"></span><br><span class="line">while read line</span><br><span class="line">do</span><br><span class="line">    echo $line &amp;</span><br><span class="line">done &lt; "a"</span><br><span class="line">wait</span><br><span class="line">echo "wait done"</span><br></pre></td></tr></table></figure>
-
-<p>运行结果：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">$ bash test_wait_2</span><br><span class="line">1</span><br><span class="line">2</span><br><span class="line">5</span><br><span class="line">4</span><br><span class="line">3</span><br><span class="line">wait done</span><br></pre></td></tr></table></figure>
-
-<p>结果符合预期！！</p>
-<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>维基百科中有这样一段话：</p>
-<blockquote>
-<p>其中n是当前正在执行的后台进程的pid，或工作的工作ID。如果没有给定n，命令会等待shell调用的所有工作终止。</p>
-</blockquote>
-<blockquote>
-<p>wait一般返回最后一个工作的退出状态。如果n所指的工作不存在，或没有工作要等待，它会返回127。</p>
-</blockquote>
-<blockquote>
-<p>因为wait需要知道当前shell执行环境的工作表，它通常为shell内建命令。</p>
-</blockquote>
-<p>这样看来仿佛<code>test_wait_1</code>中的用法也没有什么问题，但实际上shell的管道<code>|</code>实际上是产生了一级子shell，也就是在<code>test_wait_1</code>中的后台进程<code>echo $line &amp;</code>是主进程子shell的后台进程。而<code>wait</code>只会等待当前进程的后台进程执行完毕，所以<code>test_wait_1</code>在遇到wait语句直接退出了。</p>
-<p>而<code>test_wait_2</code>中，通过<code>&lt; &quot;a&quot;</code>将a文件的内容标准输入到<code>while</code>中，并未通过管道输入到<code>while</code>中，所以后台进程属于主进程。wait会等待所有的后台进程完成以后退出，</p>
-<p>这也就是<code>test_wait_1</code>和<code>test_wait_2</code>这2个脚本运行的不同之处。</p>
-<h2 id="参考资料："><a href="#参考资料：" class="headerlink" title="参考资料："></a>参考资料：</h2><ul>
-<li><p><a href="https://zh.wikipedia.org/wiki/Wait_(%E5%91%BD%E4%BB%A4)" target="_blank" rel="noopener">https://zh.wikipedia.org/wiki/Wait_(%E5%91%BD%E4%BB%A4)</a></p>
-</li>
-<li><p><a href="http://blog.csdn.net/shuanghujushi/article/details/38186303" target="_blank" rel="noopener">http://blog.csdn.net/shuanghujushi/article/details/38186303</a></p>
-</li>
-</ul>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
   </section>
 
   
@@ -2648,7 +2699,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">13</span>
+                  <span class="site-state-item-count">14</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -2659,7 +2710,7 @@
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">13</span>
+                  <span class="site-state-item-count">14</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
@@ -2723,7 +2774,7 @@
 
     <footer id="footer" class="footer">
       <div class="footer-inner">
-        <div class="copyright">&copy; <span itemprop="copyrightYear">2020</span>
+        <div class="copyright">&copy; 2020 &mdash; <span itemprop="copyrightYear">2021</span>
   <span class="with-love">
     <i class="fa fa-user"></i>
   </span>
