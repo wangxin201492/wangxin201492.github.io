@@ -570,7 +570,7 @@
         
           <h1 class="post-title" itemprop="name headline">
                 
-                <a class="post-title-link" href="/MongoDB/sharding/StaleConfig/MongoDB-sharding-StaleConfig/" itemprop="url">MongoDB sharding实例 路由刷新策略</a></h1>
+                <a class="post-title-link" href="/MongoDB/sharding/StaleConfig/MongoDB-sharding-StaleConfig/" itemprop="url">MongoDB sharding 路由刷新策略</a></h1>
         
 
         <div class="post-meta">
@@ -780,6 +780,247 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/shardCollection/MongoDB-sharding-shardCollection/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/sharding/shardCollection/MongoDB-sharding-shardCollection/" itemprop="url">MongoDB sharding shardCollection实现流程</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-08-13T15:46:07+08:00">
+                2020-08-13
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/" itemprop="url" rel="index">
+                    <span itemprop="name">sharding</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/shardCollection/" itemprop="url" rel="index">
+                    <span itemprop="name">shardCollection</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="mongos-ShardCollectionCmd-run"><a href="#mongos-ShardCollectionCmd-run" class="headerlink" title="mongos : ShardCollectionCmd::run()"></a>mongos : <code>ShardCollectionCmd::run()</code></h2><p>mongos 收到 <code>shardCollection</code> 后，将请求解析并封装成一个 <code>_configsvrShardCollection</code>(ConfigsvrShardCollectionRequest) 请求，发送给 config节点</p>
+<h2 id="config-ConfigSvrShardCollectionCommand-run"><a href="#config-ConfigSvrShardCollectionCommand-run" class="headerlink" title="config : ConfigSvrShardCollectionCommand::run()"></a>config : <code>ConfigSvrShardCollectionCommand::run()</code></h2><ol>
+<li>解析 <code>_configsvrShardCollection</code> 请求</li>
+<li>给 namespace &amp; database 均增加 “shardCollection” 的分布式锁</li>
+<li>确认 database 已经是 sharded 的</li>
+<li>如果 database == “config” ，确认 namespace == “config.system.sessions” 且其 count() == 0</li>
+<li>构造一个 <code>_shardsvrShardCollection</code>(ShardsvrShardCollection) 请求，发送给 database 的 <strong>primaryShard</strong></li>
+</ol>
+<h2 id="shard-ShardsvrShardCollectionCommand-run"><a href="#shard-ShardsvrShardCollectionCommand-run" class="headerlink" title="shard : ShardsvrShardCollectionCommand::run()"></a>shard : <code>ShardsvrShardCollectionCommand::run()</code></h2><p>解析 <code>_shardsvrShardCollection</code> 请求</p>
+<p>将请求注册到 <code>ActiveShardCollectionRegistry</code> 中，</p>
+<ol>
+<li><strong>如果没有同 namespace 的 shardCollection 运行，则注册成功，继续进行 shard 操作</strong></li>
+<li>如果有同 namespace 的请求，请求相同，则通过 promise/future 方式等待请求完成直接获取结果。请求不同则报错（<em>ConflictingOperationInProgress</em>）</li>
+</ol>
+<p>主要的shard逻辑在 <code>shardCollection</code> 完成。</p>
+<h3 id="确认-config-collections-中，对-namespace-的-shard-操作是否与当前-请求相同"><a href="#确认-config-collections-中，对-namespace-的-shard-操作是否与当前-请求相同" class="headerlink" title="确认 config.collections 中，对 namespace 的 shard 操作是否与当前 请求相同"></a>确认 <code>config.collections</code> 中，对 namespace 的 shard 操作是否与当前 请求相同</h3><ol>
+<li>不同则报错 ：<em>AlreadyInitialized</em></li>
+<li>相同则返回 <code>config.collections</code> 中的结果，进而直接将对应的 collection 返回给上游</li>
+<li><strong>不存在，则继续进行 shard 操作</strong></li>
+</ol>
+<h3 id="确认-collection-的一些状态-：-calculateTargetState"><a href="#确认-collection-的一些状态-：-calculateTargetState" class="headerlink" title="确认 collection 的一些状态 ： calculateTargetState"></a>确认 collection 的一些状态 ： <code>calculateTargetState</code></h3><ol>
+<li><code>config.chunks</code> 中有 namespace 的一些记录，报错：<em>ManualInterventionRequired</em>。需要手动请求可能因为之前 shard 操作导致有参与的chunk记录</li>
+<li>判断 namespace 索引状况：<code>createCollectionOrValidateExisting</code><ol>
+<li>所有的 unique index 必须以 shardKey 为 prefix。否则：<em>InvalidOptions</em></li>
+<li>非空 collection 必须有一个有效 index</li>
+<li>如果 shardKey 指定的是 unique的，必须有一个完全相同的 unique index</li>
+<li>没有有效的 index， 且 collection 不为空则fail：<em>InvalidOptions</em></li>
+<li>空 collection 则创建 需要的 index</li>
+</ol>
+</li>
+<li><strong>isEmpty</strong> : collection 是否为 空</li>
+<li><strong>tags</strong> : <code>config.tags</code> 中是否有 namespace 相关的 tag</li>
+<li><strong>uuid</strong> : 是否有有效的 uuid 或者生成一个新的</li>
+<li><strong>fromMapReduce</strong> : 是否来自于 mapReduce 请求</li>
+<li><strong>splitPoint</strong> : 基于 tag / shardKey类型 / 是否指定 initialSplitPoints(mapReduce) / numInitialChunks 等参数确定<ol>
+<li>mapReduce 场景下，指定了 initialSplitPoints ： splitPoint = initialSplitPoints</li>
+<li>tag 为空 &amp;&amp; shardKey 为 hashed &amp;&amp; collection 为空，则将 chunk 按照 numInitialChunks 均分（未指定则默认为 shard * 2）</li>
+</ol>
+</li>
+<li><strong>numContiguousChunksPerShard</strong> ： 每个 shard 持续的 chunk段</li>
+</ol>
+<p>在计算<code>calculateTargetState</code> 前，shardCollection会</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// From this point onward the collection can only be read, not written to, so it is safe to</span></span><br><span class="line"><span class="comment">// construct the prerequisites and generate the target state.</span></span><br><span class="line"><span class="function">CollectionCriticalSection <span class="title">critSec</span><span class="params">(opCtx, nss)</span></span></span><br></pre></td></tr></table></figure>
+
+<p>通过一个 <code>CollectionCriticalSection</code> ，来将 collection 设置为只读，而在计算完<code>calculateTargetState</code> 后，</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// From this point onward, the collection can not be written to or read from.</span></span><br><span class="line">critSec.enterCommitPhase();</span><br></pre></td></tr></table></figure>
+
+<p>继续将其设置为不可读写（直到shardCollection完成）。</p>
+<p><code>CollectionCriticalSection</code> 是</p>
+<h3 id="确定-ShardingOptimizationType-并进行具体的-chunk-分配"><a href="#确定-ShardingOptimizationType-并进行具体的-chunk-分配" class="headerlink" title="确定 ShardingOptimizationType 并进行具体的 chunk 分配"></a>确定 <code>ShardingOptimizationType</code> 并进行具体的 chunk 分配</h3><ol>
+<li><strong>SplitPointsProvided</strong> : 提供了 splitPoint<ol>
+<li>按照 splitPoint 将 chunk 分配到 shard 上(<code>generateShardCollectionInitialChunks</code>)</li>
+</ol>
+</li>
+<li><strong>TagsProvidedWithEmptyCollection</strong> : tags 不为空 且 collection 不为空<ol>
+<li>按照 tags 将 chunk 分配到 shard 上(<code>generateShardCollectionInitialZonedChunks</code>)</li>
+</ol>
+</li>
+<li><strong>TagsProvidedWithNonEmptyCollection</strong> : tags 不为空 collection 为空<ol>
+<li>将 <strong>$minKey ~ $maxKey</strong> 均分配到 primaryShard 上</li>
+</ol>
+</li>
+<li><strong>EmptyCollection</strong> : collection 为空<ol>
+<li>将 <strong>$minKey ~ $maxKey</strong> 均分配到 primaryShard 上</li>
+</ol>
+</li>
+<li><strong>None</strong> : tags 为空 &amp;&amp; splitPoint 为空 &amp;&amp; collection 不为空<ol>
+<li>将 maxChunkSizeBytes / maxChunkObjects / keyPattern 构造一个 <code>splitVector</code> 请求 发送给 primaryShard，获得一个 splitPoint 。然后根据结果将 chunk 拆分，但是都分配到 primaryShard</li>
+</ol>
+</li>
+</ol>
+<p>随后如果<code>ShardingOptimizationType != None &amp;&amp; !fromMapReduce</code> ，发送给其他相关shard发送一个  <code>_cloneCollectionOptionsFromPrimaryShard</code> 来触发其从primaryShard获取该 Collection的相关信息。具体实现则使用 <code>moveChunk</code> 时用到的 <code>MigrationDestinationManager::cloneCollectionIndexesAndOptions()</code> 来完成。</p>
+<h3 id="更新config元信息及其他shard路由信息"><a href="#更新config元信息及其他shard路由信息" class="headerlink" title="更新config元信息及其他shard路由信息"></a>更新config元信息及其他shard路由信息</h3><p>上一步中会获得一个 <code>ShardCollectionConfig</code> 实际上是 <code>std::vector&lt;ChunkType&gt; chunks</code>。随后在 <code>writeChunkDocumentsAndRefreshShards</code> 中处理<code>ShardCollectionConfig</code>：</p>
+<ol>
+<li><strong>writeFirstChunksToConfig</strong>：写入 <code>config.chunks</code> 集合</li>
+<li><strong>updateShardingCatalogEntryForCollection</strong>：更新 <code>config.collections</code> 集合</li>
+<li><strong>refreshAllShards</strong>：强制刷新本地路由，基于最新的路由信息 构造一个 <code>_flushRoutingTableCacheUpdates</code> 请求，通知所有相关 shard</li>
+</ol>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/ImplicitlyCreateCollection/MongoDB-sharding-ImplicitlyCreateCollection/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -799,7 +1040,7 @@
         
           <h1 class="post-title" itemprop="name headline">
                 
-                <a class="post-title-link" href="/MongoDB/sharding/ImplicitlyCreateCollection/MongoDB-sharding-ImplicitlyCreateCollection/" itemprop="url">MongoDB sharding实例 隐式创建collection</a></h1>
+                <a class="post-title-link" href="/MongoDB/sharding/ImplicitlyCreateCollection/MongoDB-sharding-ImplicitlyCreateCollection/" itemprop="url">MongoDB sharding 隐式创建collection</a></h1>
         
 
         <div class="post-meta">
@@ -2526,165 +2767,6 @@
 
 
     
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/shell/shell-and-subshell/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/shell/shell-and-subshell/" itemprop="url">【shell】shell与子shell那团乱麻</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-12-16T20:01:48+08:00">
-                2015-12-16
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/shell/" itemprop="url" rel="index">
-                    <span itemprop="name">shell</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <h2 id="1-fork-amp-source-amp-exec"><a href="#1-fork-amp-source-amp-exec" class="headerlink" title="1. fork &amp; source &amp; exec"></a>1. <code>fork</code> &amp; <code>source</code> &amp; <code>exec</code></h2><p>在运行shell脚本时候，有三种方式来调用外部的脚本，<code>exec(exec script.sh)</code>、<code>source(source script.sh)</code>、<code>fork(./script.sh)</code></p>
-<h3 id="1-1-exec（exec-home-script-sh）："><a href="#1-1-exec（exec-home-script-sh）：" class="headerlink" title="1.1. exec（exec /home/script.sh）："></a>1.1. exec（exec /home/script.sh）：</h3><p>使用<code>exec</code>来调用脚本，被执行的脚本会继承当前shell的环境变量。<strong>但事实上<code>exec</code>产生了新的进程，他会把主shell的进程资源占用并替换脚本内容，继承了原主shell的PID号，即原主shell剩下的内容不会执行。</strong></p>
-<h3 id="1-2-source（source-home-script-sh）"><a href="#1-2-source（source-home-script-sh）" class="headerlink" title="1.2. source（source /home/script.sh）"></a>1.2. source（source /home/script.sh）</h3><p>使用<code>source</code>或者“<code>.</code>”来调用外部脚本，<strong>不会产生新的进程</strong>，继承当前shell环境变量，而且被调用的脚本运行结束后，<strong>它拥有的环境变量和声明变量会被当前shell保留</strong>，类似将调用脚本的内容复制过来直接执行。<strong>执行完毕后原主shell继续运行。</strong></p>
-<h3 id="1-3-fork（-home-script-sh）"><a href="#1-3-fork（-home-script-sh）" class="headerlink" title="1.3. fork（/home/script.sh）"></a>1.3. fork（/home/script.sh）</h3><p>直接运行脚本，会<strong>以当前shell为父进程，产生新的进程</strong>，并且<strong>继承主脚本的环境变量和声明变量</strong>。执行完毕后，<strong>主脚本不会保留其环境变量和声明变量</strong>。</p>
-<p>总结：这样来看<code>fork</code>最灵活，<code>source</code>次之，<code>exec</code>最诡异。</p>
-<h3 id="1-4-example"><a href="#1-4-example" class="headerlink" title="1.4. example"></a>1.4. example</h3><h5 id="主脚本"><a href="#主脚本" class="headerlink" title="主脚本"></a>主脚本</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/sh</span></span><br><span class="line">a=main</span><br><span class="line"></span><br><span class="line">echo "a is $a"</span><br><span class="line">echo "PID for parent before 2.sh:$$"</span><br><span class="line">case $1 in</span><br><span class="line">  exec)</span><br><span class="line">    echo "using exec"</span><br><span class="line">    exec ./2.sh ;;</span><br><span class="line">  source)</span><br><span class="line">    echo "using sourcing"</span><br><span class="line">    source ./2.sh ;;</span><br><span class="line">  *)</span><br><span class="line">    echo "using fork"</span><br><span class="line">    ./2.sh ;;</span><br><span class="line">esac</span><br><span class="line"></span><br><span class="line">echo "PID FOR parent after 2.sh :$$"</span><br><span class="line"></span><br><span class="line">echo "now main.sh a is $a"</span><br><span class="line">echo "$b"</span><br></pre></td></tr></table></figure>
-
-<h5 id="调用脚本：2-sh"><a href="#调用脚本：2-sh" class="headerlink" title="调用脚本：2.sh"></a>调用脚本：2.sh</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/sh</span></span><br><span class="line">echo "PID FOR 2.SH:$$"</span><br><span class="line"></span><br><span class="line">echo  "2.sh get a from main.sh is $a"</span><br><span class="line"></span><br><span class="line">a=2.sh</span><br><span class="line">export a</span><br><span class="line">b=3.sh</span><br><span class="line"></span><br><span class="line">echo "now 2.sh a is $a"</span><br></pre></td></tr></table></figure>
-
-<h5 id="执行结果："><a href="#执行结果：" class="headerlink" title="执行结果："></a>执行结果：</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh <span class="built_in">exec</span></span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19026</span><br><span class="line">using exec</span><br><span class="line">PID FOR 2.SH:19026</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br></pre></td></tr></table></figure>
-
-<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh <span class="built_in">source</span></span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19027</span><br><span class="line">using sourcing</span><br><span class="line">PID FOR 2.SH:19027</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br><span class="line">PID FOR parent after 2.sh :19027</span><br><span class="line">now main.sh a is 2.sh</span><br><span class="line">3.sh</span><br></pre></td></tr></table></figure>
-
-<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh fork</span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19028</span><br><span class="line">using fork</span><br><span class="line">PID FOR 2.SH:19029</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br><span class="line">PID FOR parent after 2.sh :19028</span><br><span class="line">now main.sh a is main</span><br></pre></td></tr></table></figure>
-
-<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ol>
-<li><a href="http://qujunorz.blog.51cto.com/6378776/1541676" target="_blank" rel="noopener">http://qujunorz.blog.51cto.com/6378776/1541676</a></li>
-</ol>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
   </section>
 
   
@@ -2735,7 +2817,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">15</span>
+                  <span class="site-state-item-count">16</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -2746,7 +2828,7 @@
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">15</span>
+                  <span class="site-state-item-count">16</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>

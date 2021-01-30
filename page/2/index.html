@@ -260,6 +260,165 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/shell/shell-and-subshell/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/shell/shell-and-subshell/" itemprop="url">【shell】shell与子shell那团乱麻</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-12-16T20:01:48+08:00">
+                2015-12-16
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/shell/" itemprop="url" rel="index">
+                    <span itemprop="name">shell</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="1-fork-amp-source-amp-exec"><a href="#1-fork-amp-source-amp-exec" class="headerlink" title="1. fork &amp; source &amp; exec"></a>1. <code>fork</code> &amp; <code>source</code> &amp; <code>exec</code></h2><p>在运行shell脚本时候，有三种方式来调用外部的脚本，<code>exec(exec script.sh)</code>、<code>source(source script.sh)</code>、<code>fork(./script.sh)</code></p>
+<h3 id="1-1-exec（exec-home-script-sh）："><a href="#1-1-exec（exec-home-script-sh）：" class="headerlink" title="1.1. exec（exec /home/script.sh）："></a>1.1. exec（exec /home/script.sh）：</h3><p>使用<code>exec</code>来调用脚本，被执行的脚本会继承当前shell的环境变量。<strong>但事实上<code>exec</code>产生了新的进程，他会把主shell的进程资源占用并替换脚本内容，继承了原主shell的PID号，即原主shell剩下的内容不会执行。</strong></p>
+<h3 id="1-2-source（source-home-script-sh）"><a href="#1-2-source（source-home-script-sh）" class="headerlink" title="1.2. source（source /home/script.sh）"></a>1.2. source（source /home/script.sh）</h3><p>使用<code>source</code>或者“<code>.</code>”来调用外部脚本，<strong>不会产生新的进程</strong>，继承当前shell环境变量，而且被调用的脚本运行结束后，<strong>它拥有的环境变量和声明变量会被当前shell保留</strong>，类似将调用脚本的内容复制过来直接执行。<strong>执行完毕后原主shell继续运行。</strong></p>
+<h3 id="1-3-fork（-home-script-sh）"><a href="#1-3-fork（-home-script-sh）" class="headerlink" title="1.3. fork（/home/script.sh）"></a>1.3. fork（/home/script.sh）</h3><p>直接运行脚本，会<strong>以当前shell为父进程，产生新的进程</strong>，并且<strong>继承主脚本的环境变量和声明变量</strong>。执行完毕后，<strong>主脚本不会保留其环境变量和声明变量</strong>。</p>
+<p>总结：这样来看<code>fork</code>最灵活，<code>source</code>次之，<code>exec</code>最诡异。</p>
+<h3 id="1-4-example"><a href="#1-4-example" class="headerlink" title="1.4. example"></a>1.4. example</h3><h5 id="主脚本"><a href="#主脚本" class="headerlink" title="主脚本"></a>主脚本</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/sh</span></span><br><span class="line">a=main</span><br><span class="line"></span><br><span class="line">echo "a is $a"</span><br><span class="line">echo "PID for parent before 2.sh:$$"</span><br><span class="line">case $1 in</span><br><span class="line">  exec)</span><br><span class="line">    echo "using exec"</span><br><span class="line">    exec ./2.sh ;;</span><br><span class="line">  source)</span><br><span class="line">    echo "using sourcing"</span><br><span class="line">    source ./2.sh ;;</span><br><span class="line">  *)</span><br><span class="line">    echo "using fork"</span><br><span class="line">    ./2.sh ;;</span><br><span class="line">esac</span><br><span class="line"></span><br><span class="line">echo "PID FOR parent after 2.sh :$$"</span><br><span class="line"></span><br><span class="line">echo "now main.sh a is $a"</span><br><span class="line">echo "$b"</span><br></pre></td></tr></table></figure>
+
+<h5 id="调用脚本：2-sh"><a href="#调用脚本：2-sh" class="headerlink" title="调用脚本：2.sh"></a>调用脚本：2.sh</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">!/bin/sh</span></span><br><span class="line">echo "PID FOR 2.SH:$$"</span><br><span class="line"></span><br><span class="line">echo  "2.sh get a from main.sh is $a"</span><br><span class="line"></span><br><span class="line">a=2.sh</span><br><span class="line">export a</span><br><span class="line">b=3.sh</span><br><span class="line"></span><br><span class="line">echo "now 2.sh a is $a"</span><br></pre></td></tr></table></figure>
+
+<h5 id="执行结果："><a href="#执行结果：" class="headerlink" title="执行结果："></a>执行结果：</h5><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh <span class="built_in">exec</span></span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19026</span><br><span class="line">using exec</span><br><span class="line">PID FOR 2.SH:19026</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh <span class="built_in">source</span></span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19027</span><br><span class="line">using sourcing</span><br><span class="line">PID FOR 2.SH:19027</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br><span class="line">PID FOR parent after 2.sh :19027</span><br><span class="line">now main.sh a is 2.sh</span><br><span class="line">3.sh</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">$</span><span class="bash"> ./main.sh fork</span></span><br><span class="line">a is main</span><br><span class="line">PID for parent before 2.sh:19028</span><br><span class="line">using fork</span><br><span class="line">PID FOR 2.SH:19029</span><br><span class="line">2.sh get a from main.sh is main</span><br><span class="line">now a is 2.sh</span><br><span class="line">PID FOR parent after 2.sh :19028</span><br><span class="line">now main.sh a is main</span><br></pre></td></tr></table></figure>
+
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ol>
+<li><a href="http://qujunorz.blog.51cto.com/6378776/1541676" target="_blank" rel="noopener">http://qujunorz.blog.51cto.com/6378776/1541676</a></li>
+</ol>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/protocol/TOTP/protocol-TOTP-overview/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1276,7 +1435,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">15</span>
+                  <span class="site-state-item-count">16</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -1287,7 +1446,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">15</span>
+                  <span class="site-state-item-count">16</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
