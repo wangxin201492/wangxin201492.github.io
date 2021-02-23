@@ -1021,6 +1021,168 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/MongoDB-ServiceContext-Client-OperationContext/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/MongoDB-ServiceContext-Client-OperationContext/" itemprop="url">MongoDB中 ServiceContext/Client/OperationContext的关系</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-08-03T11:03:12+08:00">
+                2020-08-03
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="ServiceContext"><a href="#ServiceContext" class="headerlink" title="ServiceContext"></a>ServiceContext</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Class representing the context of a service, such as a MongoD database service or</span></span><br><span class="line"><span class="comment"> * a MongoS routing service.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * A ServiceContext is the root of a hierarchy of contexts.  A ServiceContext owns</span></span><br><span class="line"><span class="comment"> * zero or more Clients, which in turn each own OperationContexts.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">ServiceContext</span> <span class="title">final</span> :</span> <span class="keyword">public</span> Decorable&lt;ServiceContext&gt; &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<p>一个mongod or mongos 进程中只有一个全局唯一的 <code>ServiceContext</code>：<code>ServiceContext</code> 代表一个service的上下文环境，一个 <code>ServiceContext</code> 是上下文层次中的根。一个 <code>ServiceContext</code> 拥有0个或多个 <code>Client</code>， 一个 <code>Client</code> 拥有各自的 <code>OperationContext</code></p>
+<h2 id="Client"><a href="#Client" class="headerlink" title="Client"></a>Client</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * The database's concept of an outside "client".</span></span><br><span class="line"><span class="comment"> * */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Client</span> <span class="title">final</span> :</span> <span class="keyword">public</span> Decorable&lt;<span class="built_in">Client</span>&gt; &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<p>一个外部链接对应一个 <code>Client</code></p>
+<h2 id="OperationContext"><a href="#OperationContext" class="headerlink" title="OperationContext"></a>OperationContext</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * This class encompasses the state required by an operation and lives from the time a network</span></span><br><span class="line"><span class="comment"> * operation is dispatched until its execution is finished. Note that each "getmore" on a cursor</span></span><br><span class="line"><span class="comment"> * is a separate operation. On construction, an OperationContext associates itself with the</span></span><br><span class="line"><span class="comment"> * current client, and only on destruction it deassociates itself. At any time a client can be</span></span><br><span class="line"><span class="comment"> * associated with at most one OperationContext. Each OperationContext has a RecoveryUnit</span></span><br><span class="line"><span class="comment"> * associated with it, though the lifetime is not necesarily the same, see releaseRecoveryUnit</span></span><br><span class="line"><span class="comment"> * and setRecoveryUnit. The operation context also keeps track of some transaction state</span></span><br><span class="line"><span class="comment"> * (RecoveryUnitState) to reduce complexity and duplication in the storage-engine specific</span></span><br><span class="line"><span class="comment"> * RecoveryUnit and to allow better invariant checking.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">OperationContext</span> :</span> <span class="keyword">public</span> Interruptible, <span class="keyword">public</span> Decorable&lt;OperationContext&gt; &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<p>该类包含了一个 operation 所需的所有状态，生命周期 从 网络分派 开始，到 执行完成 为止。<code>cursor</code> 上的每一个 <code>getmore</code> 都是一个独立的 operation。在 构造函数 中，一个 <code>OperationContext</code> 会被关联到当前的 <code>Client</code> 中，直到被销毁时才会取消关联。任何时间，每个 <code>Client</code> 最多只会被关联到一个 <code>OperationContext</code> 上。每个 <code>OperationContext</code> 也会持有 <code>RecoveryUnit</code>/<code>RecoveryUnitState</code> 等对象</p>
+<h2 id="源码梳理"><a href="#源码梳理" class="headerlink" title="源码梳理"></a>源码梳理</h2><p>从源码上看，mongos 和 mongod 启动的时候都会通过 <code>setGlobalServiceContext(ServiceContext::make());</code> 来初始化一个 <code>ServiceContext</code>，这里最终将初始化好的 <code>ServiceContext</code> 放到 <code>globalServiceContext</code> 这个全局变量里，并提供一个 <code>getGlobalServiceContext()</code> 函数方便对象获取。</p>
+<p>每有一个客户端连接到 mongod/mongos 时，会同时创建一个 <code>ServiceStateMachine</code> 用于管理该客户端连接生命周期中的状态，在 <code>ServiceStateMachine</code> 构造函数中，会调用 <code>ServiceContext-&gt;makeClient()</code> 来创建一个 <code>Client</code>对象，<code>makeClient()</code> 同时也会将创建好的 <code>Client</code> 对象添加到 <code>ServiceContext</code> 维护的 <code>stdx::unordered_set&lt;Client*&gt; _clients</code> 中。</p>
+<p>在 <code>ServiceStateMachine</code> 对 <code>Client</code> 请求进行状态管理时，<code>Process</code> 为请求处理的状态，对该状态的处理在 <code>ServiceStateMachine::_processMessage()</code> 完成。这个方法中通过 <code>Client::getCurrent()-&gt;makeOperationContext();</code> 来构建一个 <code>OperationContext</code>，并在方法结束前将 <code>OperationContext</code> reset掉。</p>
+<p>上面过程会涉及到2个自增的ID，这里简单说下：</p>
+<ul>
+<li>每有客户端连接时，会创建 <code>Session</code> 对象，基于这个 <code>Session</code> 对象创建上面提及的 <code>ServiceStateMachine</code>。<code>Session</code> 创建的时候则会通过 <code>AtomicWord&lt;unsigned long long&gt; sessionIdCounter</code> 来拿到一个唯一自增ID。mongod/mongos 会创建唯一的线程来处理 <code>Client</code> 的请求，该线程名称 <code>conn123</code> 中的 123 即是 上面获取到的sessionId</li>
+<li><code>ServiceContext::makeOperationContext()</code> 创建 <code>OperationContext</code> 时会传入一个id用于唯一标识该 <code>OperationContext</code>，这个ID的获取是通过 <code>ServiceContext</code> 维护的 <code>AtomicWord&lt;unsigned&gt; _nextOpId</code> 拿到的。这个 ID 即为 <code>killOp</code>/<code>currentOp</code> 等命令中展示的 <code>opid</code></li>
+</ul>
+<p>同时 <code>ServiceContext</code> 提供了一个 <code>ClientObserver</code> 类用于 <code>Client</code> / <code>OperationContext</code> 构造和析构时的hook。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Observer interface implemented to hook client and operation context creation and</span></span><br><span class="line"><span class="comment"> * destruction.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">ClientObserver</span> &#123;</span></span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">    ...</span><br><span class="line">    <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">onCreateClient</span><span class="params">(<span class="built_in">Client</span>* client)</span> </span>= <span class="number">0</span>;</span><br><span class="line">    <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">onDestroyClient</span><span class="params">(<span class="built_in">Client</span>* client)</span> </span>= <span class="number">0</span>;</span><br><span class="line">    <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">onCreateOperationContext</span><span class="params">(OperationContext* opCtx)</span> </span>= <span class="number">0</span>;</span><br><span class="line">    <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">onDestroyOperationContext</span><span class="params">(OperationContext* opCtx)</span> </span>= <span class="number">0</span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p><code>ClientObserver</code> 的子类实现上述 virtual 函数，并通过 <code>ServiceContext::registerClientObserver()</code> 将自身注册到 <code>ServiceContext</code> 的 <code>std::vector&lt;ClientObserverHolder&gt; _clientObservers;</code> 中。那么在上文描述到的创建 <code>Client</code> 的函数 <code>ServiceContext::makeClient()</code> 和创建 <code>OperationContext</code> 函数 <code>ServiceContext::makeOperationContext()</code> 中则会依次遍历 <code>_clientObservers</code> 来调用对应的hook函数</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/ImplicitlyCreateCollection/MongoDB-sharding-ImplicitlyCreateCollection/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -2342,431 +2504,6 @@
 
 
     
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/linux/linux-subsys-IO/linux-io-overview/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/linux/linux-subsys-IO/linux-io-overview/" itemprop="url">Linux IO子系统</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-02-20T16:00:27+08:00">
-                2020-02-20
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/linux/" itemprop="url" rel="index">
-                    <span itemprop="name">linux</span>
-                  </a>
-                </span>
-
-                
-                
-                  ， 
-                
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/linux/linux-subsys-IO/" itemprop="url" rel="index">
-                    <span itemprop="name">linux_subsys_IO</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <h2 id="用于IO读写的函数"><a href="#用于IO读写的函数" class="headerlink" title="用于IO读写的函数"></a>用于IO读写的函数</h2><p>应用程序通过<code>read</code>/<code>write</code>/<code>sync</code>函数和底层交互进行读写。读写过程依次会经历<code>stdio buffer</code>/<code>kernel buffer</code>/<code>disk</code>。大致流程见下图【图1】：<br><img src="https://wangxin201492.github.io/techImages/linux-io-buffers.png" alt="linux-io-buffers.png"><br><code>read</code>用于数据读取，<code>write</code>用于数据写入，这两个行为默认情况下(<code>bufferedIO</code>)都是写入<code>kernel buffer</code>中，而<code>sync</code>则是将数据从<code>kernel buffer</code>刷入<code>disk</code></p>
-<h4 id="read-write-sync相关的函数区分"><a href="#read-write-sync相关的函数区分" class="headerlink" title="read/write/sync相关的函数区分"></a><code>read</code>/<code>write</code>/<code>sync</code>相关的函数区分</h4><p><img src="https://wangxin201492.github.io/techImages/linux-io-function-read-write-sync.png" alt="linux-io-function-read-write-sync.png"><br>上图【图2】描述的比较清楚</p>
-<ul>
-<li><code>fread</code>/<code>fwrite</code>是stdio提供的方法，数据仅和<code>stdio buffer</code> 交互</li>
-<li><code>read</code>/<code>write</code>是系统调用，以默认<code>bufferIO</code>形式调用时，数据仅和<code>kernel buffer</code>交互。而以<code>directIO</code>形式调用，则会跨过<code>kernel buffer</code>，直接和物理设备交互<ul>
-<li><code>pread</code>/<code>pwrite</code>同样是系统调用，可以认为是<code>seek</code>+<code>read</code>/<code>write</code></li>
-</ul>
-</li>
-<li><code>fflush</code>则是将<code>stdio buffer</code>数据刷入<code>kernel buffer</code></li>
-</ul>
-<p><code>sync</code>/<code>fsync</code>/<code>fdatasync</code>:</p>
-<ul>
-<li>sync函数只是将所有修改过的块缓冲区排入写队列，然后就返回，它并不等待实际写磁盘操作结束。</li>
-<li>fsync将内核缓冲区中的内容真正写入磁盘</li>
-<li>fdatasync函数类似于fsync，但它只影响文件的数据部分。而除数据外，fsync还会同步更新文件的属性。</li>
-</ul>
-<p>相关阅读：<a href="https://luoming1224.github.io/2018/11/30/[Unix%E7%BC%96%E7%A8%8B]fread%20fwrite%20fflush%E5%AE%9E%E7%8E%B0/" target="_blank" rel="noopener">https://luoming1224.github.io/2018/11/30/[Unix%E7%BC%96%E7%A8%8B]fread%20fwrite%20fflush%E5%AE%9E%E7%8E%B0/</a></p>
-<h3 id="一次完整的读取流程简述"><a href="#一次完整的读取流程简述" class="headerlink" title="一次完整的读取流程简述"></a>一次完整的读取流程简述</h3><p>IO简化的技术栈【图3】中也有相关描述，更加直观一些：<br><img src="https://wangxin201492.github.io/techImages/linux-io-stack-overview.png" alt="linux-io-stack-overview.png"></p>
-<p>传统的Buffered IO使用read读取文件的过程什么样的？假设要去读一个冷文件（Cache中不存在），open(2)打开文件内核后建立了一系列的数据结构，接下来调用read(2)，到达文件系统这一层，发现Page Cache中不存在该位置的磁盘映射，然后创建相应的Page Cache并和相关的扇区关联。然后请求继续到达块设备层，在IO队列里排队，接受一系列的调度后到达设备驱动层，此时一般使用DMA方式读取相应的磁盘扇区到Cache中，然后read(2)拷贝数据到用户提供的用户态buffer中去（read(2)的参数指出的）。</p>
-<h2 id="IO读写的一些重要特性"><a href="#IO读写的一些重要特性" class="headerlink" title="IO读写的一些重要特性"></a>IO读写的一些重要特性</h2><h3 id="IO类型"><a href="#IO类型" class="headerlink" title="IO类型"></a>IO类型</h3><h4 id="根据是否利用标准库缓存，可以把文件I-O分为缓冲I-O与非缓冲I-O"><a href="#根据是否利用标准库缓存，可以把文件I-O分为缓冲I-O与非缓冲I-O" class="headerlink" title="根据是否利用标准库缓存，可以把文件I/O分为缓冲I/O与非缓冲I/O"></a>根据是否利用标准库缓存，可以把文件I/O分为缓冲I/O与非缓冲I/O</h4><p>缓冲I/O，是指利用标准库缓存来加速文件的访问，而标准库内部再通过系统调用访问文件<br>非缓冲I/O，是指通过系统调用来访问文件，不再经过标准库缓存<br>注意，这里的 缓冲，是指标准库内部实现的缓存，比如很多程序到换行时才真正输出，而换行之前是被标准库暂时缓存起来了</p>
-<h4 id="根据是否利用操作系统的页缓存，可以把文件I-O分为直接I-O和非直接I-O"><a href="#根据是否利用操作系统的页缓存，可以把文件I-O分为直接I-O和非直接I-O" class="headerlink" title="根据是否利用操作系统的页缓存，可以把文件I/O分为直接I/O和非直接I/O"></a>根据是否利用操作系统的页缓存，可以把文件I/O分为直接I/O和非直接I/O</h4><p>直接I/O，是指跳过操作系统页缓存，直接跟文件系统交互来访问文件<br>非直接I/O，在文件读写时，先经过系统的页缓存，然后再由内核或额外的系统调用，真正写入磁盘<br>要实现直接I/O，需要在系统调用中指定O_DIRECT标志，不设置默认是非直接I/O<br>注意，直接I/O和非直接I/O本质上还是和文件系统交互，如果在数据库等场景中，可以跳过文件系统读写磁盘的情况，就是裸I/</p>
-<h4 id="根据应用程序是否阻塞自身运行，可以把文件I-O分为阻塞I-O和非阻塞I-O"><a href="#根据应用程序是否阻塞自身运行，可以把文件I-O分为阻塞I-O和非阻塞I-O" class="headerlink" title="根据应用程序是否阻塞自身运行，可以把文件I/O分为阻塞I/O和非阻塞I/O"></a>根据应用程序是否阻塞自身运行，可以把文件I/O分为阻塞I/O和非阻塞I/O</h4><h4 id="是指应用程序执行I-O操作后，如果没有获得响应，就会阻塞当前线程，自然不能执行其他任务"><a href="#是指应用程序执行I-O操作后，如果没有获得响应，就会阻塞当前线程，自然不能执行其他任务" class="headerlink" title="是指应用程序执行I/O操作后，如果没有获得响应，就会阻塞当前线程，自然不能执行其他任务"></a>是指应用程序执行I/O操作后，如果没有获得响应，就会阻塞当前线程，自然不能执行其他任务</h4><p>非阻塞I/O，是指应用程序执行I/O操作后，不会阻塞当前的线程，可以继续执行其他的人物，随后再通过轮询或者事件通知的形式，获取调用的结果<br>比如访问管道或者网络套接字时，设置O_NONBLOCK标志，就表示用非阻塞方式访问，默认是阻塞访问</p>
-<h4 id="根据是否等待响应结果，可以把文件I-O分为同步和异步I-O"><a href="#根据是否等待响应结果，可以把文件I-O分为同步和异步I-O" class="headerlink" title="根据是否等待响应结果，可以把文件I/O分为同步和异步I/O"></a>根据是否等待响应结果，可以把文件I/O分为同步和异步I/O</h4><p>同步I/O，是指应用程序执行I/O操作后，要一直等到整个I/O完成后，才能获得I/O响应<br>异步I/O，是指应用程序执行I/O操作后，不用等待完成和完成后的响应，而是继续执行就可以，等到这次I/O完成后，响应会用事件通知的方式，告诉应用程序</p>
-<h4 id="顺序访问-Sequential-Access-amp-随机访问-Random-Access"><a href="#顺序访问-Sequential-Access-amp-随机访问-Random-Access" class="headerlink" title="顺序访问(Sequential Access)&amp;随机访问(Random Access)"></a>顺序访问(Sequential Access)&amp;随机访问(Random Access)</h4><p>连续和随机，取决于本次IO的初始扇区地址，和上一次IO的结束扇区地址是否连续。如果是，则本次IO是一个连续IO；如果不连续，算一次随机IO。</p>
-<ul>
-<li>连续IO：因为本次初始扇区和上次结束扇区相隔很近，则磁头几乎不用换道或换道时间极短；</li>
-<li>随机IO：磁头需要很长的换道时间，如果随机IO很多，导致磁头不停换道，效率会大大降底</li>
-</ul>
-<h3 id="磁盘预读-read-ahead"><a href="#磁盘预读-read-ahead" class="headerlink" title="磁盘预读(read ahead)"></a>磁盘预读(read ahead)</h3><h3 id="write-back、write-through、page-cache"><a href="#write-back、write-through、page-cache" class="headerlink" title="write back、write through、page cache"></a>write back、write through、page cache</h3><h3 id="读写过程中的数据拷贝（zero-copy）"><a href="#读写过程中的数据拷贝（zero-copy）" class="headerlink" title="读写过程中的数据拷贝（zero-copy）"></a>读写过程中的数据拷贝（zero-copy）</h3><p>整个过程有几次拷贝？从磁盘到Page Cache算第一次的话，从Page Cache到用户态buffer就是第二次了。</p>
-<p>而mmap(2)做了什么？mmap(2)直接把Page Cache映射到了用户态的地址空间里了，所以mmap(2)的方式读文件是没有第二次拷贝过程的。</p>
-<p>那Direct IO做了什么？这个机制更狠，直接让用户态和块IO层对接，直接放弃Page Cache，从磁盘直接和用户态拷贝数据。好处是什么？写操作直接映射进程的buffer到磁盘扇区，以DMA的方式传输数据，减少了原本需要到Page Cache层的一次拷贝，提升了写的效率。对于读而言，第一次肯定也是快于传统的方式的，但是之后的读就不如传统方式了（当然也可以在用户态自己做Cache，有些商用数据库就是这么做的）。</p>
-<blockquote>
-<p>除了传统的Buffered IO可以比较自由的用偏移+长度的方式读写文件之外，mmap(2)和Direct IO均有数据按页对齐的要求，Direct IO还限制读写必须是底层存储设备块大小的整数倍（甚至Linux 2.4还要求是文件系统逻辑块的整数倍）。所以接口越来越底层，换来表面上的效率提升的背后，需要在应用程序这一层做更多的事情。所以想用好这些高级特性，除了深刻理解其背后的机制之外，也要在系统设计上下一番功夫。</p>
-</blockquote>
-<h3 id="顺序IO模式-Queue-Mode-并发IO模式-Burst-Mode"><a href="#顺序IO模式-Queue-Mode-并发IO模式-Burst-Mode" class="headerlink" title="顺序IO模式(Queue Mode)/并发IO模式(Burst Mode)"></a>顺序IO模式(Queue Mode)/并发IO模式(Burst Mode)</h3><p>磁盘控制器可能会一次对磁盘组发出一连串的IO命令，如果磁盘组一次只能执行一个IO命令时称为顺序IO;当磁盘组能同时执行多个IO命令时，称为并发IO。</p>
-<p>并发IO只能发生在由多个磁盘组成的磁盘组上，单块磁盘只能一次处理一个IO命令。</p>
-<h3 id="缺页中断（Page-Fault）"><a href="#缺页中断（Page-Fault）" class="headerlink" title="缺页中断（Page Fault）"></a>缺页中断（Page Fault）</h3><h3 id="经验总结"><a href="#经验总结" class="headerlink" title="经验总结"></a>经验总结</h3><ol>
-<li>提高IO效率原则： 顺序写，随机读</li>
-<li>重点监控 rkB/s 和 和 wkB/s</li>
-<li>%util接近100%，说明产生的I/O请求太多，I/O系统已经满负荷，该磁盘可能存在瓶颈</li>
-<li>await与svctm相差很大的时候，要注意磁盘的IO性能。差值越小，说明队列时间越短，反之则队列时间越长。说明系统出了问题。</li>
-</ol>
-<p>规避IO负载过高：</p>
-<ul>
-<li>如果服务器用来做日志分析，注意随机读和顺序写，避免定期的压缩、解压大日志。</li>
-<li>如果是前端应用服务器，要避免程序频繁打本地日志、或者异常日志</li>
-<li>如果是存储服务（mysql、nosql），尽量将服务部署在单独的节点上，做读写分离降低压力</li>
-</ul>
-<h3 id="相关阅读"><a href="#相关阅读" class="headerlink" title="相关阅读"></a>相关阅读</h3><ol>
-<li><a href="https://www.cnblogs.com/muahao/p/6596545.html" target="_blank" rel="noopener">https://www.cnblogs.com/muahao/p/6596545.html</a></li>
-<li><a href="https://testerhome.com/articles/21493" target="_blank" rel="noopener">https://testerhome.com/articles/21493</a></li>
-<li><a href="http://blog.chinaunix.net/uid-667478-id-2384354.html" target="_blank" rel="noopener">http://blog.chinaunix.net/uid-667478-id-2384354.html</a></li>
-<li><a href="http://www.0xffffff.org/2017/05/01/41-linux-io/" target="_blank" rel="noopener">http://www.0xffffff.org/2017/05/01/41-linux-io/</a></li>
-<li><a href="https://blog.csdn.net/hixiaoxiaoniao/article/details/86295712" target="_blank" rel="noopener">https://blog.csdn.net/hixiaoxiaoniao/article/details/86295712</a></li>
-</ol>
-<hr>
-<h1 id="IO栈及各层功能"><a href="#IO栈及各层功能" class="headerlink" title="IO栈及各层功能"></a>IO栈及各层功能</h1><p>上文【图3】中可以看到，IO行为依次经历“应用层”、“内核层”、“块层”、“设备层”和磁盘交互。按照下图将这个层次再进一步的划分下：“文件系统层”（包含“VFS”、“Page Cache”）、“Block层”（包含“device mapper”）、“device层”</p>
-<ul>
-<li>文件系统层，以 write(2) 为例，内核拷贝了write(2)参数指定的用户态数据到文件系统Cache中，并适时向下层同步</li>
-<li>块层，管理块设备的IO队列，对IO请求进行合并、排序（还记得操作系统课程学习过的IO调度算法吗？）</li>
-<li>设备层，通过DMA与内存直接交互，完成数据和具体设备之间的交互</li>
-</ul>
-<p><img src="https://wangxin201492.github.io/techImages/linux-io-stack-overview-detail.png" alt="linux-io-stack-overview-detail.png"></p>
-<h2 id="文件系统层"><a href="#文件系统层" class="headerlink" title="文件系统层"></a>文件系统层</h2><h3 id="缺页中断-–-page-fault"><a href="#缺页中断-–-page-fault" class="headerlink" title="缺页中断 – page fault"></a>缺页中断 – page fault</h3><p>当程序启动的时候，Linux 内核首先检查 CPU 的缓存和物理内存，如果数据已经在内存里就忽略，如果数据不在内存里就引起一个<strong>缺页中断（Page Fault）</strong>，然后从硬盘读取缺页，并把缺页缓存到物理内存里。<br>缺页中断可分为主缺页中断（Major Page Fault）和次缺页中断（Minor Page Fault）</p>
-<ul>
-<li>要从磁盘读取数据而产生的中断是主缺页中断</li>
-<li>数据已经被读入内存并被缓存起来，从内存缓存区中而不是直接从硬盘中读取数据而产生的中断是次 缺页中断(page cache?)</li>
-</ul>
-<h3 id="磁盘预读-–-read-ahead"><a href="#磁盘预读-–-read-ahead" class="headerlink" title="磁盘预读 – read ahead"></a>磁盘预读 – read ahead</h3><h4 id="顺序性检测"><a href="#顺序性检测" class="headerlink" title="顺序性检测"></a>顺序性检测</h4><p>为了保证预读命中率，Linux只对顺序读(sequential read)进行预读。内核通过验证如下两个条件来判定一个read()是否顺序读：</p>
-<ol>
-<li>这是文件被打开后的第一次读，并且读的是文件首部；</li>
-<li>当前的读请求与前一（记录的）读请求在文件内的位置是连续的。</li>
-</ol>
-<p>如果不满足上述顺序性条件，就判定为随机读</p>
-<h4 id="预读的大小"><a href="#预读的大小" class="headerlink" title="预读的大小"></a>预读的大小</h4><p>Linux采用了一个快速的窗口扩张过程：</p>
-<ul>
-<li>首次预读： readahead_size = read_size * 2; // or *4</li>
-<li>后续预读： readahead_size *= 2;<ul>
-<li>后续的预读窗口将逐次倍增，直到达到系统设定的最大预读大小，其缺省值是128KB。</li>
-<li>调整大小：blockdev –setra 2048 /dev/sda</li>
-</ul>
-</li>
-</ul>
-<h3 id="page-cache"><a href="#page-cache" class="headerlink" title="page cache"></a>page cache</h3><p>page cache有三种类型：</p>
-<ol>
-<li>Read pages只读页（或代码页）<ul>
-<li>那些通过主缺页中断从硬盘读取的页面，包括不能修改的静态文件、可执行文件、库文件等。当内核需要它们的时候把它们读到 内存中，当内存不足的时候，内核就释放它们到空闲列表，当程序再次需要它们的时候需要通过缺页中断再次读到内存。</li>
-</ul>
-</li>
-<li>Dirty pages，脏页<ul>
-<li>指那些在内存中被修改过的数据页，比如文本文件等。这些文件由 pdflush 负责同步到硬盘，内存不足的时候由 kswapd 和 pdflush 把数据写回硬盘并释放内存。</li>
-</ul>
-</li>
-<li>Anonymous pages，匿名页<ul>
-<li>那些属于某个进程但是又和任何文件无关联，不能被同步到硬盘上，内存不足的时候由 kswapd 负责将它们写到交换分区并释放内存。</li>
-</ul>
-</li>
-</ol>
-<h3 id="Write-Through（写穿）和Write-back（写回）-–-page-cache同步"><a href="#Write-Through（写穿）和Write-back（写回）-–-page-cache同步" class="headerlink" title="Write Through（写穿）和Write back（写回） – page cache同步"></a>Write Through（写穿）和Write back（写回） – page cache同步</h3><p>广义上Cache的同步方式有两种，即Write Through（写穿）和Write back（写回）. 从名字上就能看出这两种方式都是从写操作的不同处理方式引出的概念（纯读的话就不存在Cache一致性了，不是么）。对应到Linux的Page Cache上</p>
-<ul>
-<li>Write Through就是指write(2)操作将数据拷贝到Page Cache后立即和下层进行同步的写操作，完成下层的更新后才返回。</li>
-<li>而Write back正好相反，指的是写完Page Cache就可以返回了。Page Cache到下层的更新操作是异步进行的。</li>
-</ul>
-<p>Linux下Buffered IO默认使用的是Write back机制，即文件操作的写只写到Page Cache就返回，之后Page Cache到磁盘的更新操作是异步进行的。Page Cache中被修改的内存页称之为脏页（Dirty Page），脏页在特定的时候被一个叫做pdflush(Page Dirty Flush)的内核线程写入磁盘，写入的时机和条件如下：</p>
-<p>当空闲内存低于一个特定的阈值时，内核必须将脏页写回磁盘，以便释放内存。<br>当脏页在内存中驻留时间超过一个特定的阈值时，内核必须将超时的脏页写回磁盘。<br>用户进程调用sync(2)、fsync(2)、fdatasync(2)系统调用时，内核会执行相应的写回操作。<br>刷新策略由以下几个参数决定（数值单位均为1/100秒）：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"># flush每隔5秒执行一次</span><br><span class="line">root@082caa3dfb1d &#x2F; $ sysctl vm.dirty_writeback_centisecs</span><br><span class="line">vm.dirty_writeback_centisecs &#x3D; 500</span><br><span class="line"># 内存中驻留30秒以上的脏数据将由flush在下一次执行时写入磁盘</span><br><span class="line">root@082caa3dfb1d &#x2F; $ sysctl vm.dirty_expire_centisecs</span><br><span class="line">vm.dirty_expire_centisecs &#x3D; 3000</span><br><span class="line"># 若脏页占总物理内存10％以上，则触发flush把脏数据写回磁盘</span><br><span class="line">root@082caa3dfb1d &#x2F; $ sysctl vm.dirty_background_ratio</span><br><span class="line">vm.dirty_background_ratio &#x3D; 10</span><br></pre></td></tr></table></figure>
-
-<p>默认是写回方式，如果想指定某个文件是写穿方式呢？即写操作的可靠性压倒效率的时候，能否做到呢？当然能，除了之前提到的fsync(2)之类的系统调用外，在open(2)打开文件时，传入O_SYNC这个flag即可实现。这里给篇参考文章[5]，不再赘述（更好的选择是去读TLPI相关章节）。</p>
-<p>文件读写遭遇断电时，数据还安全吗？相信你有自己的答案了。使用O_SYNC或者fsync(2)刷新文件就能保证安全吗？现代磁盘一般都内置了缓存，代码层面上也只能讲数据刷新到磁盘的缓存了。当数据已经进入到磁盘的高速缓存时断电了会怎么样？这个恐怕不能一概而论了。不过可以使用hdparm -W0命令关掉这个缓存，相应的，磁盘性能必然会降低。</p>
-<h3 id="文件系统与inode"><a href="#文件系统与inode" class="headerlink" title="文件系统与inode"></a>文件系统与inode</h3><p><img src="https://wangxin201492.github.io/techImages/linux-filesystem-inode.png" alt="linux-filesystem-inode.png"></p>
-<p>应用程序在访问文件时都会先打开文件，在内核中，对应每个进程，都会有一个文件描述符表表示这个进程打开的文件，但是用户程序不能直接访问内核中的文件描述符表,而只能使用文件描述符表的索引（一个整数），这些索引就被称为文件描述符。当调用open 打开一个文件或创建一个新文件时,内核分配一个文件描述符并返回给用户程序,该文件描述符表项中的指针指向新打开的文件。</p>
-<p>文件描述表中每一项都是一个指针，指向一个用于描述打开的文件的数据块–file对象，file对象中描述了文件的打开模式，读写位置等重要信息，当进程打开一个文件时，内核就会创建一个新的file对象。需要注意的是，file对象不是专属于某个进程的，不同进程的文件描述符表中的指针可以指向相同的file对象，从而共享这个打开的文件。file对象有引用计数，记录了引用这个对象的文件描述符个数，只有当引用计数为0时，内核才销毁file对象，因此某个进程关闭文件，不影响与之共享同一个file对象的进程。</p>
-<p>file对象中包含一个指针，指向dentry对象。dentry对象代表一个独立的文件路径，如果一个文件路径被打开多次，那么会建立多个file对象，但它们都指向同一个dentry对象。inode对象代表一个独立文件，inode 对象包含了最终对文件进行操作所需的所有信息，如文件系统类型、文件的操作方法、文件的权限、访问日期等。</p>
-<h3 id="文件系统磁盘布局"><a href="#文件系统磁盘布局" class="headerlink" title="文件系统磁盘布局"></a>文件系统磁盘布局</h3><p><img src="https://wangxin201492.github.io/techImages/linux-filesystem-ext-blocks.png" alt="linux-filesystem-ext-blocks.png"></p>
-<p>ext3文件系统将其所管理的磁盘或者分区(引导块除外)中的块划分到不同的块组中。每个块组大小相同，当然最后一个块组所管理的块可能会少一些，其大小在文件系统创建时决定，主要取决于文件系统的块大小。每个块组包含一个块位图块，一个inode位图块，一个或多个块用于描述 inode 表和用于存储文件数据的数据块，除此之外，还有可能包含超级块和所有块组描述符表。<br>块位图用于描述该块组所管理的块的分配状态，如果某个块对应的位未置位，那么代表该块未分配，可以进行分配使用。inode位图用于描述该块组所管理的inode的分配状态，每个inode对应文件系统中唯一的一个号，如果inode位图中相应位置位，那么代表该inode已经分配出去；否则可以使用。</p>
-<h3 id="日志文件系统和非日志文件系统"><a href="#日志文件系统和非日志文件系统" class="headerlink" title="日志文件系统和非日志文件系统"></a>日志文件系统和非日志文件系统</h3><p>文件内容的修改涉及到两部分：实际文件内容的修改 和 文件元(metadata)信息的修改。所以在修改一个成功之后，修改另一个之前，此时系统崩溃，就会导致两者的不一致。所以提出了日志文件系统的概念。</p>
-<p>所谓的日志文件系统(Journaling file system)，就是在实际修改文件内容和文件元信息之前，将他们的修改先写到一个日志中(journal log)。这样的话，如果发生系统崩溃，就可以使用日志进行恢复。当然，写日志会对文件系统的性能有一定的影响。除了ext2之外，其它文件系统几乎都是日志文件系统。</p>
-<p>日志文件系统的处理过程是：1）先写日志；2）然后写实际的文件系统；3）删除日志；</p>
-<p>日志文件系统又可以分成三种类型：</p>
-<ol>
-<li>日志模式(journal): 将所有的元数据和数据改变均写入日志，对性能影响最大；</li>
-<li>预定模式(ordered): 只记录元数据的变化, 在数据写入磁盘后再修改元数据，对性能影响中等；</li>
-<li>写回模式(writeback): 只记录元数据的修改变化，对数据修改顺序无要求，对性能影响最小；</li>
-</ol>
-<p>我们可以在/etc/fstab 文件中修改文件系统的日志模式。<br>/dev/sdb1 /testfs ext3 defaults,data=writeback 0 0</p>
-<h3 id="相关阅读-1"><a href="#相关阅读-1" class="headerlink" title="相关阅读"></a>相关阅读</h3><ol>
-<li><a href="http://www.sysnote.org/2015/08/06/fs-io-map/" target="_blank" rel="noopener">http://www.sysnote.org/2015/08/06/fs-io-map/</a></li>
-<li><a href="http://oliveryang.net/2016/05/linux-file-system-basic-4/" target="_blank" rel="noopener">http://oliveryang.net/2016/05/linux-file-system-basic-4/</a></li>
-<li><a href="https://www.cnblogs.com/digdeep/p/4857987.html" target="_blank" rel="noopener">https://www.cnblogs.com/digdeep/p/4857987.html</a></li>
-</ol>
-<h2 id="Block层"><a href="#Block层" class="headerlink" title="Block层"></a>Block层</h2><h3 id="block-IO"><a href="#block-IO" class="headerlink" title="block IO"></a>block IO</h3><p>一个I/O请求进入block layer之后，可能会经历下面的过程：</p>
-<ul>
-<li>Remap: 可能被DM(Device Mapper)或MD(Multiple Device, Software RAID) remap到其它设备</li>
-<li>Split: 可能会因为I/O请求与扇区边界未对齐、或者size太大而被分拆(split)成多个物理I/O</li>
-<li>Merge: 可能会因为与其它I/O请求的物理位置相邻而合并(merge)成一个I/O</li>
-<li>被IO Scheduler依照调度策略发送给driver</li>
-<li>被driver提交给硬件，经过HBA、电缆（光纤、网线等）、交换机（SAN或网络）、最后到达存储设备，设备完成IO请求之后再把结果发回。</li>
-</ul>
-<h3 id="device-mapper层"><a href="#device-mapper层" class="headerlink" title="device mapper层"></a>device mapper层</h3><h2 id="device层"><a href="#device层" class="headerlink" title="device层"></a>device层</h2><h3 id="机械磁盘基本结构"><a href="#机械磁盘基本结构" class="headerlink" title="机械磁盘基本结构"></a>机械磁盘基本结构</h3><p><img src="https://wangxin201492.github.io/techImages/linux-disk-HDD-overview.png" alt="linux-disk-HDD-overview.png"><br>硬盘由三部分组成，物理结构，数据结构，存储容量</p>
-<ul>
-<li>数据结构:<ul>
-<li>扇区：磁盘上每个磁道被分为若干个弧段，这些弧段便是硬盘的扇区。硬盘的第一个扇区，叫做引导扇区。</li>
-<li>磁道：当磁盘旋转时，磁头若保持在一个位置上，则每个磁头都会在磁盘表面划出一个圆形轨迹，这些圆形轨迹 叫做磁道</li>
-</ul>
-</li>
-<li>物理结构<ul>
-<li>盘片：硬盘有多个盘片，每个盘片有2面。</li>
-<li>磁头：每面一个磁头</li>
-</ul>
-</li>
-<li>存储容量 = 磁头数<em>磁道数</em>每道扇区数*每扇区字节数</li>
-</ul>
-<h3 id="固态硬盘"><a href="#固态硬盘" class="headerlink" title="固态硬盘"></a>固态硬盘</h3><p>固态硬盘(Solid State Disk)，通常缩写为SSD，由固态电子元器件组成，固态磁盘不需要磁道寻址，所以不管是连续I/O，还是随机I/O的性能，都比机械磁盘要好得多</p>
-<h4 id="机械硬盘-amp-固态硬盘"><a href="#机械硬盘-amp-固态硬盘" class="headerlink" title="机械硬盘&amp;固态硬盘"></a>机械硬盘&amp;固态硬盘</h4><p>无论机械盘还是固态磁盘，相同磁盘的随机I/O都要比连续I/O慢很多</p>
-<ul>
-<li>对机械磁盘来说，由于随机I/O需要更多的磁头晕倒和盘片旋转，它的性能自然比连续I/O慢</li>
-<li>对于固态磁盘，虽然它的随机性能比机械硬盘好很多，但同样存在“先擦除再写入”的限制，随机读写会导致大量的垃圾回收，导致随机I/O的性能比连续I/O还是差了很多</li>
-<li>连续I/O还可以通过预读取的方式，来减少I/O请求的次数，这也是其性能优异的一个原因，很多性能优化的方案，都会从这个角度出发，来优化I/O性能</li>
-</ul>
-<p>机械磁盘和固态硬盘还有一个最小的读写单位</p>
-<ul>
-<li>机械磁盘的最小读写单位是扇区，一般为512字节</li>
-<li>固态硬盘的最小读写单位是页，通常大小是4KB，8KB等</li>
-</ul>
-<p>由于每次读写512字节这么小的单位效率很低，所以文件系统会把连续的扇区，组成逻辑块，然后以逻辑快作为最小单位来管理数据，常见的逻辑块大小是4KB，也就是连续8个扇区，或者一个独立的页，都可以组成一个逻辑块</p>
-<h3 id="磁盘读取数据花费的时间"><a href="#磁盘读取数据花费的时间" class="headerlink" title="磁盘读取数据花费的时间"></a>磁盘读取数据花费的时间</h3><h4 id="寻道时间"><a href="#寻道时间" class="headerlink" title="寻道时间"></a>寻道时间</h4><p>磁盘的驱动臂(Actuator Arm)带读写磁头(Head)离开着陆区(Landing Zone，位于内圈没有数据的区域)，移动到要操作的初始数据块所在的磁道(Track)的正上方，这个过程被称为寻址(Seeking)，对应消耗的时间被称为寻址时间(Seek Time)</p>
-<p>考虑到被读写的数据可能在磁盘的任意一个磁道，既有可能在磁盘的最内圈(寻址时间最短)，也可能在磁盘的最外圈(寻址时间最长)，所以在计算中我们只考虑平均寻址时间，也就是磁盘参数中标明的那个平均寻址时间，这里就采用当前最多的10krmp硬盘的5ms。</p>
-<p>目前磁盘的平均寻道时间一般在3－15ms。</p>
-<h4 id="旋转延迟"><a href="#旋转延迟" class="headerlink" title="旋转延迟"></a>旋转延迟</h4><p>但是找到对应磁道还不能马上读取数据，这时候磁头要等到磁盘盘片(Platter)旋转到初始数据块所在的扇区(Sector)落在读写磁头正上方的之后才能开始读取数据，在这个等待盘片旋转到可操作扇区的过程中消耗的时间称为旋转延时(Rotational Delay)</p>
-<p>和寻址一样，当磁头定位到磁道之后有可能正好在要读写扇区之上，这时候是不需要额外额延时就可以立刻读写到数据，但是最坏的情况确实要磁盘旋转整整一圈之后磁头才能读取到数据，所以这里我们也考虑的是平均旋转延时，对于10krpm的磁盘就是(60s/15k)*(1/2) = 2ms。</p>
-<h4 id="数据传输时间"><a href="#数据传输时间" class="headerlink" title="数据传输时间"></a>数据传输时间</h4><p>接下来就随着盘片的旋转，磁头不断的读/写相应的数据块，直到完成这次IO所需要操作的全部数据，这个过程称为数据传送(Data Transfer)，对应的时间称为传送时间(Transfer Time)</p>
-<p>磁盘参数提供我们的最大的传输速度，当然要达到这种速度是很有难度的，但是这个速度却是磁盘纯读写磁盘的速度，因此只要给定了单次 IO的大小，我们就知道磁盘需要花费多少时间在数据传送上，这个时间就是IO Chunk Size / Max Transfer Rate。</p>
-<p>目前IDE/ATA能达到133MB/s，SATA II可达到300MB/s的接口数据传输率</p>
-<h3 id="基本单位"><a href="#基本单位" class="headerlink" title="基本单位"></a>基本单位</h3><h4 id="块（block）"><a href="#块（block）" class="headerlink" title="块（block）"></a>块（block）</h4><blockquote>
-<p>在windows下叫做簇，在linux下如ext4系统中成为块(block)</p>
-</blockquote>
-<p>块是操作系统中最小的逻辑存储单位(虚拟出来的)，操作系统与磁盘打交道的最小单位是磁盘块，每个块可以包括2、4、8、16、32、64…2的n次方个扇区</p>
-<p>优点：</p>
-<ol>
-<li>读取方便：由于扇区的数量比较小，数目众多在寻址时比较困难，所以操作系统就将相邻的扇区组合在一起，形成一个块，再对块进行整体的操作</li>
-<li>分离对底层的依赖：操作系统忽略对底层物理存储结构的设计。通过虚拟出来磁盘块的概念，在系统中认为块是最小的单位</li>
-</ol>
-<h4 id="page"><a href="#page" class="headerlink" title="page"></a>page</h4><p>操作系统经常与内存和硬盘这两种存储设备进行通信，类似于“块”的概念，都需要一种虚拟的基本单位。所以，与内存操作，是虚拟一个页的概念来作为最小单位。与硬盘打交道，就是以块为最小单位。</p>
-<p>获取方式：<code>/usr/bin/time -v data</code></p>
-<h4 id="扇区、块-簇、page的关系"><a href="#扇区、块-簇、page的关系" class="headerlink" title="扇区、块/簇、page的关系"></a>扇区、块/簇、page的关系</h4><ol>
-<li>扇区： 硬盘的最小读写单元</li>
-<li>块/簇： 是操作系统针对硬盘读写的最小单元</li>
-<li>page： 是内存与操作系统之间操作的最小单元</li>
-</ol>
-<p>大小关系：扇区 &lt;= 块/簇 &lt;= page</p>
-<p>目前接触到的扇区一般为512B，块为4KB，page为4KB</p>
-<h3 id="磁盘类型一些名词区分"><a href="#磁盘类型一些名词区分" class="headerlink" title="磁盘类型一些名词区分"></a>磁盘类型一些名词区分</h3><h4 id="尺寸外形"><a href="#尺寸外形" class="headerlink" title="尺寸外形"></a>尺寸外形</h4><p>也就是设备的形状和大小，通常存储设备的尺寸外形包括如下：</p>
-<ul>
-<li>2.5寸或者3.5寸驱动器（在SFF标准中定义）</li>
-<li>M.2 和 PCI Express（PCIe）（在PCI-SIG标准中定义）</li>
-</ul>
-<h4 id="接口"><a href="#接口" class="headerlink" title="接口"></a>接口</h4><p>也就是设备如何与计算机通信。常见的存储设备接口包括：</p>
-<ul>
-<li>SATA接口，通常用于2.5寸和3.5寸硬盘，有时候一些M.2设备也会使用</li>
-<li>PCI Express(PCIe)接口， 用于M.2和PCIe设备</li>
-<li>SAS（串行SCSI）和FC（Fibre Channel）接口</li>
-</ul>
-<p>仅用于服务器领域和数据中心 PCIe接口要比SATA接口快的多，SATA3最大带宽是6Gb/s，而基于4X PCIe的M.2接口最大可以达到32Gb/s。</p>
-<h4 id="协议"><a href="#协议" class="headerlink" title="协议"></a>协议</h4><p>定义了如何在计算机与设备之间传输数据。常见的协议包括：</p>
-<ul>
-<li>用于SATA接口的AHCI或者ATA协议</li>
-<li>用于PCIe接口的NVMe协议</li>
-</ul>
-<h4 id="为什么NVMe会这么快"><a href="#为什么NVMe会这么快" class="headerlink" title="为什么NVMe会这么快"></a>为什么NVMe会这么快</h4><blockquote>
-<p>这里说的快是基于SSD设备的，如果是机械硬盘则不然</p>
-</blockquote>
-<p>由于SSD本身的物理特性，其数据的访问已经非常快了，性能的瓶颈就是出在计算机与设备连接的接口和协议上面。 </p>
-<ul>
-<li>对于SATA的SSD，类似于一个单臂的机器人，仓库生产的很快，但机器人每次只能拿一个，搬移的速度就比较慢。</li>
-<li>然而对于基于NVMe的SSD，相当于这个机器人长了数百只手，这样速度显然就比前者快的多了。</li>
-</ul>
-<h3 id="IOPS"><a href="#IOPS" class="headerlink" title="IOPS"></a>IOPS</h3><p>IOPS (Input/Output Per Second)即每秒的输入输出量(或读写次数)，是衡量磁盘性能的主要指标之一。IOPS是指单位时间内系统能处理的I/O请求数量，一般以每秒处理的I/O请求数量为单位，I/O请求通常为读或写数据操作请求。</p>
-<h4 id="IOPS计算方法"><a href="#IOPS计算方法" class="headerlink" title="IOPS计算方法"></a>IOPS计算方法</h4><p>传统磁盘本质上一种机械装置，如FC, SAS, SATA磁盘，转速通常为5400/7200/10K/15K rpm不等。影响磁盘的关键因素是磁盘服务时间，即磁盘完成一个I/O请求所花费的时间，它由<code>寻道时间</code>、<code>旋转延迟</code>和<code>数据传输时间</code>三部分构成。</p>
-<p>理论上可以计算出磁盘的最大IOPS，即<code>IOPS = 1000 ms/ (Tseek + Troatation)</code>，忽略数据传输时间。假设磁盘平均物理寻道时间为3ms, 磁盘转速为7200,10K,15K rpm，则磁盘IOPS理论最大值分别为:</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">IOPS &#x3D; 1000 &#x2F; (3 + 60000&#x2F;7200&#x2F;2)  &#x3D; 140</span><br><span class="line">IOPS &#x3D; 1000 &#x2F; (3 + 60000&#x2F;10000&#x2F;2) &#x3D; 167</span><br><span class="line">IOPS &#x3D; 1000 &#x2F; (3 + 60000&#x2F;15000&#x2F;2) &#x3D; 200</span><br></pre></td></tr></table></figure>
-
-<p>固态硬盘SSD是一种电子装置， 避免了传统磁盘在寻道和旋转上的时间花费，存储单元寻址开销大大降低，因此IOPS可以非常高，能够达到数万甚至数十万。</p>
-<h3 id="传输速度-Transfer-Rate-吞吐率-Throughput"><a href="#传输速度-Transfer-Rate-吞吐率-Throughput" class="headerlink" title="传输速度(Transfer Rate)/吞吐率(Throughput)"></a>传输速度(Transfer Rate)/吞吐率(Throughput)</h3><p>现在我们要说的传输速度(另一个常见的说法是吞吐率)不是磁盘上所表明的最大传输速度或者说理想传输速度，而是磁盘在实际使用的时候从磁盘系统总线上流过的数据量。有了IOPS数据之后我们是很容易就能计算出对应的传输速度来的</p>
-<p><img src="https://wangxin201492.github.io/techImages/linux-io-size-effect-iops.png" alt="linux-io-size-effect-iops.png"></p>
-<p>这里一定要明确一个概念，那就是尽管上面我们使用IOPS来计算传输速度，但是实际上传输速度和IOPS是没有直接关系，在没有缓存的情况下它们共同的决定因素都是对磁盘系统的访问方式以及单个IO的大小。</p>
-<p>对磁盘进行随机访问时候我们可以利用IOPS来衡量一个磁盘系统的性能，此时的传输速度不会太大;但是当对磁盘进行连续访问时，此时的IOPS已经没有了参考的价值，这个时候限制实际传输速度却是磁盘的最大传输速度。</p>
-<p>因此在实际的应用当中，<strong>只会用IOPS来衡量小IO的随机读写的性能，而当要衡量大IO连续读写的性能的时候就要采用传输速度而不能是IOPS了</strong></p>
-<h2 id="相关阅读-2"><a href="#相关阅读-2" class="headerlink" title="相关阅读"></a>相关阅读</h2><ol>
-<li><a href="https://blog.51cto.com/14449536/2431772" target="_blank" rel="noopener">https://blog.51cto.com/14449536/2431772</a></li>
-<li><a href="https://zhuanlan.zhihu.com/p/71932170" target="_blank" rel="noopener">https://zhuanlan.zhihu.com/p/71932170</a></li>
-<li><a href="https://www.cnblogs.com/muahao/p/6596545.html" target="_blank" rel="noopener">https://www.cnblogs.com/muahao/p/6596545.html</a></li>
-</ol>
-<h3 id="内核代码分析"><a href="#内核代码分析" class="headerlink" title="内核代码分析"></a>内核代码分析</h3><ol>
-<li><a href="https://zhuanlan.zhihu.com/p/56823442" target="_blank" rel="noopener">https://zhuanlan.zhihu.com/p/56823442</a></li>
-<li><a href="https://www.codeleading.com/article/22651695474/" target="_blank" rel="noopener">https://www.codeleading.com/article/22651695474/</a></li>
-<li><a href="https://www.ibm.com/developerworks/cn/linux/l-cn-directio/index.html" target="_blank" rel="noopener">https://www.ibm.com/developerworks/cn/linux/l-cn-directio/index.html</a></li>
-<li><a href="http://oenhan.com/ext3-fs-directio" target="_blank" rel="noopener">http://oenhan.com/ext3-fs-directio</a></li>
-<li><a href="http://oenhan.com/linux-kernel-read" target="_blank" rel="noopener">http://oenhan.com/linux-kernel-read</a></li>
-</ol>
-<hr>
-<h2 id="IO监控工具"><a href="#IO监控工具" class="headerlink" title="IO监控工具"></a>IO监控工具</h2><p><img src="https://wangxin201492.github.io/techImages/linux-io-utils.png" alt="linux-io-utils.png"></p>
-<h3 id="iostat"><a href="#iostat" class="headerlink" title="iostat"></a>iostat</h3><p>常用<code>iostat -dx 1 100</code>。iostat(1)和sar(1)都没有指标可以衡量硬盘设备的性能，这是因为它们所依赖的/proc/diskstats不提供这项数据</p>
-<ul>
-<li>IOPS：r/s &amp; w/s</li>
-<li>带宽：rkB/s &amp; wkB/s</li>
-<li>IO合并：rrqm/s &amp; wrqm/s。如果两个I/O操作发生在相邻的数据块时，它们可以被合并成一个，以提高效率，合并的操作通常是I/O scheduler（也叫elevator）负责的</li>
-<li>avgrq-sz：每个I/O的平均扇区数</li>
-<li>avgqu-sz：平均未完成的I/O请求数量（手册上说是队列里的平均I/O请求数量，更恰当的理解应该是平均未完成的I/O请求数量。）</li>
-<li>svctm：已被废弃的指标，没什么意义，svctm=[util/tput]。iostat(1)和sar(1)的man page上都说了不要相信svctm，该指标将被废弃</li>
-<li>%util：该硬盘设备的繁忙比率。表示该设备有I/O（即非空闲）的时间比率，不考虑I/O有多少，只考虑有没有。由于现代硬盘设备都有并行处理多个I/O请求的能力，所以%util即使达到100%也不意味着设备饱和了<ul>
-<li>某硬盘处理单个I/O需要0.1秒，有能力同时处理10个I/O请求，那么当10个I/O请求依次顺序提交的时候，需要1秒才能全部完成，在1秒的采样周期里%util达到100%；而如果10个I/O请求一次性提交的话，0.1秒就全部完成，在1秒的采样周期里%util只有10%。可见，即使%util高达100%，硬盘也仍然有可能还有余力处理更多的I/O请求，即没有达到饱和状态</li>
-</ul>
-</li>
-</ul>
-<h3 id="iotop"><a href="#iotop" class="headerlink" title="iotop"></a>iotop</h3><p>这两个命令,都可以按进程统计IO状况,因此可以回答你以下二个问题</p>
-<p>当前系统哪些进程在占用IO,百分比是多少?<br>占用IO的进程是在读?还是在写?读写量是多少?</p>
-<h3 id="pidstat"><a href="#pidstat" class="headerlink" title="pidstat"></a>pidstat</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">pidstat -u -r -d -t 1        </span><br><span class="line"># -d IO 信息,</span><br><span class="line"># -r 缺页及内存信息</span><br><span class="line"># -u CPU使用率</span><br><span class="line"># -t 以线程为统计单位</span><br><span class="line"># 1  1秒统计一次</span><br></pre></td></tr></table></figure>
-
-<h3 id="block-dump-iodump"><a href="#block-dump-iodump" class="headerlink" title="block_dump, iodump"></a>block_dump, iodump</h3><p>iotop和 pidstat 用着很爽,但两者都依赖于/proc/pid/io文件导出的统计信息, 这个对于老一些的内核是没有的.因此只好用以上2个穷人版命令</p>
-<h3 id="ioprofile"><a href="#ioprofile" class="headerlink" title="ioprofile"></a>ioprofile</h3><p>ioprofile 命令本质上是 lsof + strace, 具体下载可见 <a href="http://code.google.com/p/maatkit/" target="_blank" rel="noopener">http://code.google.com/p/maatkit/</a></p>
-<p>ioprofile 可以回答你以下三个问题:</p>
-<ul>
-<li>当前进程某时间内,在业务层面读写了哪些文件(read, write)？</li>
-<li>读写次数是多少?(read, write的调用次数)</li>
-<li>读写数据量多少?(read, write的byte数)</li>
-</ul>
-<p>假设某个行为会触发程序一次IO动作,例如: “一个页面点击,导致后台读取A,B,C文件”<br>./io_event # 假设模拟一次IO行为,读取A文件一次, B文件500次, C文件500次</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">ioprofile  -p  &#96;pidof  io_event&#96; -c count   # 读写次数</span><br><span class="line">ioprofile  -p  &#96;pidof  io_event&#96; -c times   # 读写耗时</span><br><span class="line">ioprofile  -p  &#96;pidof  io_event&#96; -c sizes    # 读写大小</span><br></pre></td></tr></table></figure>
-
-<h3 id="相关阅读-3"><a href="#相关阅读-3" class="headerlink" title="相关阅读"></a>相关阅读</h3><ol>
-<li><a href="https://www.cnblogs.com/muahao/p/6564745.html" target="_blank" rel="noopener">https://www.cnblogs.com/muahao/p/6564745.html</a></li>
-<li><a href="http://linuxperf.com/?p=156" target="_blank" rel="noopener">http://linuxperf.com/?p=156</a></li>
-</ol>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
   </section>
 
   
@@ -2817,7 +2554,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">16</span>
+                  <span class="site-state-item-count">17</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
