@@ -1,5 +1,5 @@
 ---
-title: MongoDB sharding实例 隐式创建collection
+title: MongoDB sharding 隐式创建collection
 date: 2020-07-31 13:21:15
 tags:
 - MongoDB-OTT

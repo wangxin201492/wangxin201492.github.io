@@ -1,5 +1,5 @@
 ---
-title: MongoDB sharding实例 路由刷新策略
+title: MongoDB sharding 路由刷新策略
 date: 2020-09-21 10:05:48
 tags:
 - MongoDB-OTT
