@@ -260,6 +260,249 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-serverStatus/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/command/serverStatus/MongoDB-serverStatus/" itemprop="url">MongoDB serverStatus实现原理</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-04-21T13:15:09+08:00">
+                2020-04-21
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/command/" itemprop="url" rel="index">
+                    <span itemprop="name">command</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/command/serverStatus/" itemprop="url" rel="index">
+                    <span itemprop="name">serverStatus</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p> <code>CmdServerStatus</code> 的 run() 函数是 <code>serverStatus</code> 命令的具体实现</p>
+<ul>
+<li>首先将一些全局信息添加到result中</li>
+<li>遍历<code>_sections</code>，调用<code>appendSection</code>，将所有注册的<code>Section</code>结果添加到result中</li>
+<li>调用<code>MetricTree::theMetricTree-&gt;appendTo()</code>，将所有<code>Metric</code>指标添加到result中</li>
+<li>其他一些信息的补充</li>
+</ul>
+<p>同时 <code>CmdServerStatus</code> 还维护了一个 <code>_sections</code> （map结构）存储section名称和具体 <code>ServerStatusSection</code> 的对应关系。提供 <code>addSection</code> 函数将制定section添加到 <code>_sections</code> 中</p>
+<h2 id="Section指标"><a href="#Section指标" class="headerlink" title="Section指标"></a>Section指标</h2><p><code>ServerStatusSection</code> 是所有 <code>section</code> 指标的基类，构造方法调用 <code>CmdServerStatusInstantiator::getInstance()-&gt;addSection()</code> 将自身注册到 <code>CmdServerStatus</code> 中。并声明 virtual 函数 <code>includeByDefault</code> , <code>addRequiredPrivileges</code> , <code>generateSection</code> , <code>appendSection</code> 由子类定义实现，子类主要需要按需求定义<code>includeByDefault</code> , <code>generateSection</code> 的具体实现。</p>
+<ul>
+<li><code>includeByDefault</code> 用于说明是否默认被包含</li>
+<li><code>generateSection</code>&amp;<code>appendSection</code>   一般实现其中一个即可，父类方法中<code>appendSection</code> 调用了 <code>generateSection</code> ，所以一般只需要实现 <code>generateSection</code> 即可。</li>
+</ul>
+<p><code>CmdServerStatusInstantiator</code> 是包装 <code>CmdServerStatus</code> 用于获取 <code>CmdServerStatus</code> 单例对象的一个struct，提供 <code>getInstance()</code> 完成单例对象获取。所以上面讲到的 <code>ServerStatusSection</code> 构造时调用 <code>CmdServerStatusInstantiator::getInstance()-&gt;addSection()</code> ，最终完成了自身到 <code>CmdServerStatus</code> 的 _sections 注册。</p>
+<p>serverStatus命令运行时将遍历自身的 _sections ，依次根据 <code>includeByDefault</code> 配置，调用其 appendSection 完成 response BSON 的构建。</p>
+<blockquote>
+<p>其他 Command 都是在类声明的时候同时定义了一个对象，完成到 CommandMap 的注册。而 <code>CmdServerStatus</code> 由于需要 <code>CmdServerStatusInstantiator</code> 构建单例对象，所以是在 <code>CmdServerStatusInstantiator</code> 声明时定义了一个对象，完成 <code>CmdServerStatus</code> 到 CommandMap 的注册行为。</p>
+</blockquote>
+<h2 id="Metric指标"><a href="#Metric指标" class="headerlink" title="Metric指标"></a>Metric指标</h2><p><code>MetricTree</code>维护了一个树状结构(下文简称Tree) 用于存储所有的 metric指标 及其 path 对应关系，同时提供一个静态变量 <code>theMetricTree</code> 对外提供服务。同时提供 <code>add</code> 和 <code>appendTo</code> 函数分别用于将 Tree 添加到 <code>theMetricTree</code> 以及将 Tree 的数据以BSON的形式输出。</p>
+<ul>
+<li><p><code>add</code> 函数用于将 <code>ServerStatusMetric</code> 添加到 <code>Tree</code> : <code>Tree</code> 维护 <code>metrics path</code> 和 <code>ServerStatusMetric</code> 的对应关系，内部是由 2 个 map 构成的，如果当前 <code>metrics path</code> 是叶子节点（即 path 中不存在”.”），那么存储到``path –&gt; ServerStatusMetric<code>的 map 中，反之取出 path 的第一级路径，存储到 第一级路径 --&gt;</code>MetricTree` （不存在则新加一个） ，然后递归调用完成添加</p>
+</li>
+<li><ul>
+<li>如果 path 是以 “.” 为开头，则添加到 Tree 的顶级路径，否则会在提供的 path 前添加 “metrics.” 前缀（即添加到metrics的子节点上）</li>
+</ul>
+</li>
+<li><p><code>appendTo</code> 函数用于将 <code>Tree</code> 的数据以BSON的形式输出 ： 对于非叶子节点，会递归调用 <code>appendTo</code> 函数。对于叶子节点则会调用 <code>ServerStatusMetric</code> 的 <code>appendAtLeaf</code> 函数。最终根据所有 <code>ServerStatusMetric</code> 的 path 产生对应的的BSON</p>
+</li>
+</ul>
+<p><code>ServerStatusMetric</code> 是所有 metric指标 的基类，主要提供构造方法调用 <code>MetricTree::theMetricTree-&gt;add(this)</code> 将自身注册到 <code>MetricTree</code> 中。并声明一个 <code>virtual appendAtLeaf</code> 函数由子类定义实现。该类有4个子类：</p>
+<ul>
+<li><p>模板类 <code>ServerStatusMetricField</code> 是一个被广泛应用的子类。增加一个T，用于实现大多数需求：都是 k-v 的结构， <code>appendAtLeaf</code>将 <strong>k &amp; v</strong> 直接append到bson中</p>
+</li>
+<li><ul>
+<li>举例场景：所有command的一个成员变量，用于做类似命令与请求次数的绑定，便于serverStatus拿到结果</li>
+</ul>
+</li>
+<li><p><code>MemBase (= .mem.bits )</code> ，获取MongoDB使用的内存信息</p>
+</li>
+<li><p><code>ClusterCursorStats (= cursor )</code>，cursor 信息</p>
+</li>
+<li><p><code>ReplExecutorSSM (= repl.executor )</code>，// TODO</p>
+</li>
+</ul>
+<p>serverStatus命令运行时，将调用 <code>theMetricTree</code> 的 <code>appendTo</code> 函数，完成 response BSON 的构建</p>
+<h2 id="Section指标-amp-Metric指标-实现对比"><a href="#Section指标-amp-Metric指标-实现对比" class="headerlink" title="Section指标 &amp; Metric指标 实现对比"></a>Section指标 &amp; Metric指标 实现对比</h2><p>ServerStatusMetric 和 ServerStatusSection 下文统称为Impl</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Section指标</th>
+<th>Metric指标</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>都有一个单例的对象管理</td>
+<td>CmdServerStatusInstantiator::getInstance()</td>
+<td>MetricTree::theMetricTree</td>
+</tr>
+<tr>
+<td>都是 name – Impl  的对应关系</td>
+<td>CmdServerStatus  中_sections是一个map结构  name – ServerStatusSection</td>
+<td>ServerStatusMetric中基于2个map结构实现了一个树状结构  叶子节点也都是  name – ServerStatusMetric</td>
+</tr>
+<tr>
+<td>Impl都提供一个函数将结果  append 到 response 中</td>
+<td>generateSection&amp;appendSection</td>
+<td>appendTo</td>
+</tr>
+</tbody></table>
+<p>区别应该有2点：</p>
+<ol>
+<li><code>ServerStatusSection</code>的append函数 <code>generateSection</code>&amp;<code>appendSection</code> 包含了 opCtx 和 configElement 。定义分别是<ul>
+<li>`virtual BSONObj generateSection(OperationContext* opCtx, const BSONElement&amp;      configElement) const;``</li>
+<li>``virtual void appendSection(OperationContext* opCtx, const BSONElement&amp;      configElement, BSONObjBuilder* result) const;`</li>
+</ul>
+</li>
+<li><code>ServerStatusSection</code>提供了 <code>includeByDefault</code> 和 <code>addRequiredPrivileges</code> 对输出结构的控制力更强一些</li>
+</ol>
+<p>看起来是对于serverStatus默认添加且是计数行为的使用 <code>ServerStatusMetric</code> 比较方便简单一些。其他情况尤其对于 opCtx 有依赖或者需要控制对serverStatus输出的还是使用 <code>ServerStatusSection</code> 操控力更强一些。</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/linux/linux-subsys-IO/linux-io-overview/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1860,7 +2103,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">17</span>
+                  <span class="site-state-item-count">18</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -1871,7 +2114,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">16</span>
+                  <span class="site-state-item-count">17</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
