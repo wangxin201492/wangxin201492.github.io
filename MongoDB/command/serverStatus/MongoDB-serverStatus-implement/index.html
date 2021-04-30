@@ -68,7 +68,7 @@
 
 
 
-  <meta name="keywords" content="MongoDB-OTT," />
+  <meta name="keywords" content="MongoDB-OTT,MongoDB-serverStatus," />
 
 
 
@@ -82,13 +82,14 @@
 <meta name="description" content="CmdServerStatus 的 run() 函数是 serverStatus 命令的具体实现  首先将一些全局信息添加到result中 遍历_sections，调用appendSection，将所有注册的Section结果添加到result中 调用MetricTree::theMetricTree-&gt;appendTo()，将所有Metric指标添加到result中 其他一些信息的补充">
 <meta property="og:type" content="article">
 <meta property="og:title" content="MongoDB serverStatus实现原理">
-<meta property="og:url" content="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-serverStatus/index.html">
+<meta property="og:url" content="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-serverStatus-implement/index.html">
 <meta property="og:site_name" content="wangxin201492">
 <meta property="og:description" content="CmdServerStatus 的 run() 函数是 serverStatus 命令的具体实现  首先将一些全局信息添加到result中 遍历_sections，调用appendSection，将所有注册的Section结果添加到result中 调用MetricTree::theMetricTree-&gt;appendTo()，将所有Metric指标添加到result中 其他一些信息的补充">
 <meta property="article:published_time" content="2020-04-21T05:15:09.000Z">
-<meta property="article:modified_time" content="2020-07-01T09:06:03.017Z">
+<meta property="article:modified_time" content="2021-04-30T06:55:44.788Z">
 <meta property="article:author" content="wangxin201492">
 <meta property="article:tag" content="MongoDB-OTT">
+<meta property="article:tag" content="MongoDB-serverStatus">
 <meta name="twitter:card" content="summary">
 
 
@@ -119,7 +120,7 @@
 
 
 
-  <link rel="canonical" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-serverStatus/"/>
+  <link rel="canonical" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-serverStatus-implement/"/>
 
 
 
@@ -262,7 +263,7 @@
   
   
   <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-serverStatus/">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-serverStatus-implement/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="name" content="wangxin201492">
@@ -501,6 +502,8 @@
           
             <a href="/tags/MongoDB-OTT/" rel="tag"># MongoDB-OTT</a>
           
+            <a href="/tags/MongoDB-serverStatus/" rel="tag"># MongoDB-serverStatus</a>
+          
         </div>
       
 
@@ -601,7 +604,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">18</span>
+                  <span class="site-state-item-count">19</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -623,7 +626,7 @@
               
               <div class="site-state-item site-state-tags">
                 <a href="/tags/index.html">
-                  <span class="site-state-item-count">21</span>
+                  <span class="site-state-item-count">22</span>
                   <span class="site-state-item-name">标签</span>
                 </a>
               </div>
