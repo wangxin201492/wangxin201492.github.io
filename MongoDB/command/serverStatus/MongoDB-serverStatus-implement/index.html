@@ -79,14 +79,14 @@
 
 
 
-<meta name="description" content="CmdServerStatus 的 run() 函数是 serverStatus 命令的具体实现  首先将一些全局信息添加到result中 遍历_sections，调用appendSection，将所有注册的Section结果添加到result中 调用MetricTree::theMetricTree-&gt;appendTo()，将所有Metric指标添加到result中 其他一些信息的补充">
+<meta name="description" content="Category[TOC]  CmdServerStatus 的 run() 函数是 serverStatus 命令的具体实现  首先将一些全局信息添加到result中 遍历_sections，调用appendSection，将所有注册的Section结果添加到result中 调用MetricTree::theMetricTree-&gt;appendTo()，将所有Metric指标添加到resu">
 <meta property="og:type" content="article">
 <meta property="og:title" content="MongoDB serverStatus实现原理">
 <meta property="og:url" content="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-serverStatus-implement/index.html">
 <meta property="og:site_name" content="wangxin201492">
-<meta property="og:description" content="CmdServerStatus 的 run() 函数是 serverStatus 命令的具体实现  首先将一些全局信息添加到result中 遍历_sections，调用appendSection，将所有注册的Section结果添加到result中 调用MetricTree::theMetricTree-&gt;appendTo()，将所有Metric指标添加到result中 其他一些信息的补充">
+<meta property="og:description" content="Category[TOC]  CmdServerStatus 的 run() 函数是 serverStatus 命令的具体实现  首先将一些全局信息添加到result中 遍历_sections，调用appendSection，将所有注册的Section结果添加到result中 调用MetricTree::theMetricTree-&gt;appendTo()，将所有Metric指标添加到resu">
 <meta property="article:published_time" content="2020-04-21T05:15:09.000Z">
-<meta property="article:modified_time" content="2021-04-30T06:55:44.788Z">
+<meta property="article:modified_time" content="2021-04-30T12:47:40.261Z">
 <meta property="article:author" content="wangxin201492">
 <meta property="article:tag" content="MongoDB-OTT">
 <meta property="article:tag" content="MongoDB-serverStatus">
@@ -374,7 +374,8 @@
       
 
       
-        <p> <code>CmdServerStatus</code> 的 run() 函数是 <code>serverStatus</code> 命令的具体实现</p>
+        <h2 id="Category"><a href="#Category" class="headerlink" title="Category"></a>Category</h2><p>[TOC]</p>
+<p> <code>CmdServerStatus</code> 的 run() 函数是 <code>serverStatus</code> 命令的具体实现</p>
 <ul>
 <li>首先将一些全局信息添加到result中</li>
 <li>遍历<code>_sections</code>，调用<code>appendSection</code>，将所有注册的<code>Section</code>结果添加到result中</li>
@@ -675,7 +676,7 @@
             
 
             
-              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Section指标"><span class="nav-number">1.</span> <span class="nav-text">Section指标</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Metric指标"><span class="nav-number">2.</span> <span class="nav-text">Metric指标</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Section指标-amp-Metric指标-实现对比"><span class="nav-number">3.</span> <span class="nav-text">Section指标 &amp; Metric指标 实现对比</span></a></li></ol></div>
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Category"><span class="nav-number">1.</span> <span class="nav-text">Category</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Section指标"><span class="nav-number">2.</span> <span class="nav-text">Section指标</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Metric指标"><span class="nav-number">3.</span> <span class="nav-text">Metric指标</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Section指标-amp-Metric指标-实现对比"><span class="nav-number">4.</span> <span class="nav-text">Section指标 &amp; Metric指标 实现对比</span></a></li></ol></div>
             
 
           </div>
