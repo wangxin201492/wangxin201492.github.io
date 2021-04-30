@@ -3,11 +3,16 @@ title: MongoDB serverStatus实现原理
 date: 2020-04-21 13:15:09
 tags:
 - MongoDB-OTT
+- MongoDB-serverStatus
 categories:
 - MongoDB
 - command
 - serverStatus
 ---
+
+## Category
+
+[TOC]
 
  `CmdServerStatus` 的 run() 函数是 `serverStatus` 命令的具体实现
 
