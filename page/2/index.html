@@ -260,6 +260,224 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/MongoDB-ReplicaSetMonitor/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/MongoDB-ReplicaSetMonitor/" itemprop="url">MongoDB ReplicaSetMonitor对shard探测机制</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-04-27T12:59:24+08:00">
+                2020-04-27
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p>sharding实例对后端 shard 会进行状态探测，以发现 shard 是否有节点更新（ 选主、节点加入、节点异常）。提供探测能力的核心类为 <code>ReplicaSetMonitor</code> 及相关类。</p>
+<p>对于状态探测的基本逻辑应该也比较好构思：<strong>定期状态探测、探测结果存储、探测结果查询</strong>。MongoDB中也按照这个逻辑来完成的： </p>
+<ul>
+<li><p><code>ReplicaSetMonitor</code> 提供状态查询的接口，以及定期探测触发能力。状态信息存储在 <code>_state</code> (<code>SetState</code>类型成员变量) 中</p>
+</li>
+<li><p><code>SetState</code> 存储 ReplicaSet shard 的状态信息。包装 Node 记录各个 Node 的信息，持有一个 <code>ScanState</code> 记录该 ReplicaSet 当前正在 scan 的信息</p>
+</li>
+<li><p>Refresher 进行实际的状态探测，提供一个 static 方法 <code>ensureScanInProgress</code> 来初始化一个 Refresher 进行探测。</p>
+<ul>
+<li><code>Refresher</code> 与 <code>SetState</code> 是一一绑定的，只有 <code>SetState</code> 在被探测状态，才会有对应的 <code>Refresher</code> 产生</li>
+</ul>
+</li>
+<li><p><code>ScanState</code> 记录 <code>Refresher</code> 探测过程中的状态信息。<code>ScanState</code> 会被 <code>SetState::currentScan</code> 及 <code>Refresher::_scan</code> 持有，一般情况下这2个 scan 是相同的，但是可能存在并发的场景导致指向的不是同一个 scan， 这时候以 <code>SetState::currentScan</code> 为准。</p>
+</li>
+</ul>
+<p>ReplicaSetMonitor / SetState / Refresher / ScanState 具体关系参考下图：</p>
+<p><img src="https://wangxin201492.github.io/techImages/MongoDB-ReplicaSetMonitor.png" alt="MongoDB-ReplicaSetMonitor.png"></p>
+<h2 id="探测目标-shard-要求"><a href="#探测目标-shard-要求" class="headerlink" title="探测目标 shard 要求"></a>探测目标 shard 要求</h2><p><strong>只有以 ReplicaSet 方式启动的 shard(包含 config )，才会持有一个 <code>ReplicaSetMonitor</code> 类的成员。</strong>即只有 ReplicaSet shard 才会被探测，以 Standalong 方式启动的 shard 不会进行探测</p>
+<h2 id="探测触发"><a href="#探测触发" class="headerlink" title="探测触发"></a>探测触发</h2><p>ReplicaSetMonitor 中会<strong>定期进行 shard 状态探测</strong>，如果当前维系的状态<strong>不能满足其他代码的 ReadPreference 要求，也会下发探测</strong></p>
+<h3 id="定期探测"><a href="#定期探测" class="headerlink" title="定期探测"></a>定期探测</h3><p><code>ReplicaSetMonitor</code> 初始化时会调用<code>_scheduleRefresh</code>，而后通过 <code>_scheduleRefresh</code> 和 <code>_doScheduledRefresh</code> 两个函数相互调用及 <code>TaskExecutor::scheduleWorkAt</code> 完成:</p>
+<ul>
+<li><code>_scheduleRefresh</code>中通过使用 <code>TaskExecutor::scheduleWorkAt</code> 注册定时任务，定时任务负责调用 <code>_doScheduledRefresh</code></li>
+<li><code>_doScheduledRefresh</code> 负责调用 <code>Refresher::ensureScanInProgress</code> 进行 <code>Refresher</code> 新建与 探测下发。同时根据当前 <code>SetState</code> 的状态来决定下次刷新的周期，然后调用 <code>_scheduleRefresh</code> 注册新的定时任务</li>
+</ul>
+<p>默认情况下，定时任务每隔 <strong>kDefaultRefreshPeriod (30s)</strong> 执行一次。但是如果 SetState 的 waiters 结构中非空，则会将周期调整为 <strong>kExpeditedRefreshPeriod (500ms)</strong> 。SetState 的 waiters 结构中 数据添加在下文按需探测时，数据清理在探测执行完成时。</p>
+<h3 id="按需探测"><a href="#按需探测" class="headerlink" title="按需探测"></a>按需探测</h3><p>代码中需要按照某种 ReadPreference 获得 shard 的部分节点地址时，会调用 ReplicaSetMonitor 提供 <code>getHostsOrRefresh</code> 函数。如果当前持有的 shard 信息不能满足 ReadPreference 时，会构造一个 promise-future，返回 future ，然后将 promise 添加到 SetState 的 waiter 中，并立即下发刷新。</p>
+<ul>
+<li>如果刷新结果能满足 ReadPreference ，则返回对应的host</li>
+<li>如果不能满足，则会按照上文描述，下次 <code>_doScheduledRefresh</code> 被调用时，将刷新周期改为 <strong>500ms</strong></li>
+</ul>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span> ReplicaSetMonitor::_doScheduledRefresh(<span class="keyword">const</span> CallbackHandle&amp; currentHandle) &#123;</span><br><span class="line">    ....</span><br><span class="line">    Refresher::ensureScanInProgress(_state, lk);</span><br><span class="line"></span><br><span class="line">    Milliseconds period = _state-&gt;refreshPeriod;</span><br><span class="line">    <span class="keyword">if</span> (_state-&gt;isExpedited) &#123;</span><br><span class="line">        <span class="keyword">if</span> (_state-&gt;waiters.empty()) &#123;</span><br><span class="line">            <span class="comment">// No current waiters so we can stop the expedited scanning.</span></span><br><span class="line">            _state-&gt;isExpedited = <span class="literal">false</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            period = <span class="built_in">std</span>::<span class="built_in">min</span>(period, kExpeditedRefreshPeriod);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    _scheduleRefresh(_state-&gt;now() + period, lk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+
+
+<h2 id="探测方式"><a href="#探测方式" class="headerlink" title="探测方式"></a>探测方式</h2><p>探测的核心 就是发送 <strong>isMaster()</strong> 命令并处理返回结果。</p>
+<p>探测的中间状态记录在上文描述的 <strong>ScanState</strong> 中，主要持有几个 成员 来实现：</p>
+<ul>
+<li><strong>hostsToScan</strong> : 待执行队列</li>
+<li><strong>possibleNodes</strong> :     非primary节点返回的node集合</li>
+<li><strong>waitingFor</strong> : 已经发送命令，等待返回的集合</li>
+<li><strong>triedHosts</strong> : 已经下发isMaster命令的集合</li>
+</ul>
+<p>探测过程有一个简单的状态机：<strong>CONTACT_HOST</strong>、<strong>WAIT</strong>、<strong>DONE</strong>，基于上面描述的 ScanState 持有的几个成员来判断：</p>
+<ul>
+<li><strong>CONTACT_HOST</strong> : 链接当前实例。如果 <strong>hostsToScan</strong> 中有 host，则会返回该 host 并标记状态为 <strong>CONTACT_HOST</strong></li>
+<li><strong>WAIT</strong> : 等待 response 。如果 <strong>hostsToScan</strong> 为空，而 <strong>waitingFor</strong> 不为空则标记为 WAIT 状态</li>
+<li><strong>DONE</strong> : Refresh 完成。如果 <code>_scan != _set-&gt;currentScan</code> 或者 <strong>hostsToScan</strong> &amp; <strong>waitingFor</strong> 均为空，则为 <strong>DONE</strong> 状态</li>
+</ul>
+<p>状态流转都在<code>getNextStep</code>中实现，用于<code>scheduleNetworkRequests</code>调度流转。</p>
+<p><code>IsMasterReply</code> : 记录isMaster必要的返回信息</p>
+<h3 id="请求下发"><a href="#请求下发" class="headerlink" title="请求下发"></a>请求下发</h3><p><code>scheduleNetworkRequests</code> 通过 <code>getNextStep</code> 依次从 <strong>hostsToScan</strong> 拿到一个host信息，并将 host 信息插入到 <strong>waitingFor</strong> 及 <strong>triedHosts</strong> 这 2 个 set 中。然后针对这个 host 调用 <code>scheduleIsMaster</code> </p>
+<p><code>scheduleIsMaster</code> 构建一个 isMaster 的request ，提交给 executor ，并注册回调：</p>
+<ul>
+<li>如果当前 Refresher 的 <code>_scan</code> 和 <code>_set-&gt;currentScan</code> 不同，则忽略返回结果</li>
+<li>如果返回结果是 ok，则调用 <code>receivedIsMaster</code>；否则调用 <code>failedHost</code></li>
+</ul>
+<h3 id="response处理"><a href="#response处理" class="headerlink" title="response处理"></a>response处理</h3><p><code>receivedIsMaster</code> : 将 host 从 waitingFor 中清理掉，然后构建一个 <code>IsMasterReply</code></p>
+<ul>
+<li>如果 <code>IsMasterReply</code> 的结果不是 ok ， 则会标记当前 host 为 fail</li>
+<li>如果 reply 中 setName 和 _set 中的 name 不匹配，则会标记当前 host 为 fail</li>
+<li>如果 reply 声明自己是 primary 节点， 则会调用 <code>receivedIsMasterFromMaster</code></li>
+<li>找到 primary 节点以后的 reply 处理： 将 reply 更新到对应的 <code>_set</code> 的 node 上，并在 notify 中判断是否有已经满足 <code>_set-&gt;waiter</code> 的 promise，有则返回</li>
+<li>未找到 primary 节点前的 reply 处理： 将 reply 的 member 全部加到 <strong>possibleNodes</strong> 中，如果在 reply 中声明了 primary 节点的地址且该 primary </li>
+<li>在 <strong>triedHosts</strong> 中，则将该节点重新添加会 <strong>hostsToScan</strong>。然后将该 reply 记录到 <strong>unconfirmedReplies</strong> 中</li>
+</ul>
+<p><code>receivedIsMasterFromMaster</code> 处理逻辑比较多，简单整理了下：</p>
+<ul>
+<li>有效性判断：判断 <code>configVersion</code> / <code>electionId</code> 的有效性</li>
+<li>状态存储：将 reply 的结果更新到 <code>SetState</code> 中。更新nodes / seedNodes / seedConnStr / workingConnstr</li>
+<li>清理<code>ScanState</code> 中记录的信息：<strong>triedHost</strong> / <strong>waiitingFor</strong> / <strong>unconfirmedReplies</strong></li>
+<li>如果 primary 有变化，则会通知所有的 listener 状态变更。</li>
+</ul>
+<p><code>failedHost</code> : 将 host从 <strong>waitingFor</strong> 中移除，并将node标记为 fail</p>
+<p>无论<code>receivedIsMaster</code> 还是 <code>failedHost</code> 执行完成后，都会调用 <code>scheduleNetworkRequests</code> 重新调度（可能有新加入 <strong>hostsToScan</strong> 的节点）</p>
+<h2 id="周边类"><a href="#周边类" class="headerlink" title="周边类"></a>周边类</h2><p><code>ReplicaSetMonitorManager</code> 是负责 <code>ReplicaSetMonitor</code> 的管理类，维护一个 map 结构 （记录 setName 和 <code>ReplicaSetMonitor</code>），一个<code>TaskExecutor</code> 用于所有 <code>ReplicaSetMonitor</code> 命令执行，以及一个<code>ReplicaSetChangeNotifier</code></p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-request-counter/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -2304,7 +2522,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">19</span>
+                  <span class="site-state-item-count">20</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -2315,7 +2533,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">17</span>
+                  <span class="site-state-item-count">18</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
@@ -2400,6 +2618,15 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
   <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/iissnan/hexo-theme-next">NexT.Pisces</a> v5.1.4</div>
 
 
+
+
+
+  <script src='https://unpkg.com/mermaid@7.1.2/dist/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize("");
+    }
+  </script>
 
 
         
