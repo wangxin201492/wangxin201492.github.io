@@ -260,6 +260,204 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/MongoDB-Timer/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/MongoDB-Timer/" itemprop="url">MongoDB 源码中定时器机制</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-05-06T09:42:24+08:00">
+                2020-05-06
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p>MongoDB 提供了2种定时执行机制</p>
+<ul>
+<li><code>TaskExecutor::scheduleWorkAt(Date_t when, CallbackFn&amp;&amp; work)</code></li>
+<li><code>PeriodicRunner::PeriodicJob</code></li>
+</ul>
+<h2 id="TaskExecutor-scheduleWorkAt"><a href="#TaskExecutor-scheduleWorkAt" class="headerlink" title="TaskExecutor::scheduleWorkAt"></a>TaskExecutor::scheduleWorkAt</h2><p><code>TaskExecutor::scheduleWorkAt</code> 提供了一个在指定时间 <code>when</code> 执行的方式，具体在 <code>ThreadPoolTaskExecutor</code> 中实现。</p>
+<p><code>ThreadPoolTaskExecutor</code>实现 <code>scheduleWorkAt</code> 方法和 <code>scheduleWork</code> 逻辑基本一致：将 <code>CallbackFn</code> 添加到一个 <code>WorkQueue</code> 中，并获得一个 <code>CallbackHandle</code>，随后将 <code>WorkQueue</code> 插入到 <code>_poolInProgressQueue</code> 中等待被处理。区别在于：</p>
+<ul>
+<li><code>scheduleWork</code> 将 <code>CallbackFn</code> 添加到一个 temp 的 WorkQueue，而 <code>scheduleWorkAt</code> 添加到 <code>_sleepersQueue</code></li>
+<li><code>scheduleWork</code> 中直接将 <code>WorkQueue</code> 中数据插入到 <code>_poolInProgressQueue</code> 中，而 <code>scheduleWorkAt</code> 则是通过 <code>_net::setAlarm</code> 注册一个时间 when 后回调插入的(<code>_net</code> 为一个 <code>NetworkInterfaceTL</code> 成员)。</li>
+</ul>
+ <figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">StatusWith&lt;TaskExecutor::CallbackHandle&gt; <span class="title">ThreadPoolTaskExecutor::scheduleWorkAt</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">                                         Date_t when, CallbackFn&amp;&amp; work)</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="keyword">auto</span> wq = makeSingletonWorkQueue(<span class="built_in">std</span>::<span class="built_in">move</span>(work), <span class="literal">nullptr</span>, when);</span><br><span class="line">    ...</span><br><span class="line">    <span class="keyword">auto</span> cbHandle = enqueueCallbackState_inlock(&amp;_sleepersQueue, &amp;wq);</span><br><span class="line">    ...</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> status = _net-&gt;setAlarm(cbHandle.getValue(), </span><br><span class="line">                                 when, </span><br><span class="line">                                 [<span class="keyword">this</span>, cbHandle = cbHandle.getValue()](Status status) &#123;</span><br><span class="line">            ...</span><br><span class="line">            scheduleIntoPool_inlock(&amp;_sleepersQueue, cbState-&gt;iter, <span class="built_in">std</span>::<span class="built_in">move</span>(lk));</span><br><span class="line">        &#125;);</span><br><span class="line">    ...</span><br><span class="line">    <span class="keyword">return</span> cbHandle;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<blockquote>
+<p> <strong>Note:</strong>   <code>scheduleWorkAt</code> 和 <code>scheduleWork</code> 都会返回一个 <code>TaskExecutor::CallbackHandle</code> 对象  <code>cbHandle</code>，这个 <code>cbHandle</code> <em>不是一个回调函数*，应该是表示回调状态 的一个对象， <code>CallbackHandle</code> 持有一个 <code>CallbackState</code> , 而 <code>CallbackState</code> 的类注释为 *”Class representing a  scheduled callback and providing methods for interacting with it.”</em></p>
+<p>具体的回调函数即上文提到的 <code>CallbackFn</code> 被添加到 <code>WorkQueue</code>  中，而后被添加到*   <code>_poolInProgressQueue</code> 等待被消费</p>
+</blockquote>
+<p><code>NetworkInterfaceTL::setAlarm</code> 接收 3 个入参：<code>cbHandle</code>, <code>when</code>, <code>action</code>，<code>cbHandle</code> 主要做一些 状态管理 、 合理性校验等逻辑。action即为当面提到的将 <code>WorkQueue</code> 添加到 <code>_poolInProgressQueue</code> 的回调。</p>
+<p><code>NetworkInterfaceTL::setAlarm</code> 中 构造了一个 <code>PromiseFuture</code> 对象 <strong>pf ( future为 action）</strong>，并将时间点 when，回调状态 <code>cbHandle</code>，新建一个 <code>ASIOReactorTimer timer</code>，以及 pf.promise 封装成一个 <code>AlarmState</code> 。然后调用 <code>timer-&gt;waitUntil( when )</code> 等待到达指定时间（witerUntil 实际上也是返回一个 Future），指定时间到达时调用 <code>_answerAlarm</code> 标记 满足 promise（及触发上文 action ）</p>
+<p> 关于指定时间执行的行为则在 <code>NetworkInterfaceTL::setAlarm</code> 中实现。</p>
+<p><code>ASIOReactorTimer</code> 中会持有一个 <code>_timer (asio::system_timer)</code> ，<code>waitUntil()</code> 中会依次调用 <code>_timer-&gt;expires_at()</code>, <code>_timer-&gt;async_wait()</code>进行计时等待</p>
+<p><strong>总结一下</strong>：<code>TaskExecutor::scheduleWorkAt</code> 实际上是基于 <code>asio::system_timer</code> 库实现的指定时间执行逻辑。</p>
+<ul>
+<li>指定时间到达后，会标记 满足 promise ，调用 <code>_answerAlarm</code> </li>
+<li><code>_answerAlarm</code> 中进行一系列判断后 也会标记 满足 promise ， 调用 action</li>
+<li>action 中 会将 <code>_sleepersQueue</code> 中的数据插入到 <code>_poolInProgressQueue</code> 排队等待执行</li>
+</ul>
+<p>由于 整个逻辑中回调函数比较多，所以堆栈会比较冗长，这里是以 为例的堆栈：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">#0  mongo::ReplicaSetMonitor::_doScheduledRefresh (this&#x3D;0x7f0362e0fb00, currentHandle&#x3D;...) at src&#x2F;mongo&#x2F;client&#x2F;replica_set_monitor.cpp:249</span><br><span class="line">#5  0x00007f035e3fdd28 in mongo::executor::ThreadPoolTaskExecutor::runCallback (this&#x3D;0x7f0362e19140, cbStateArg&#x3D;...) at src&#x2F;mongo&#x2F;executor&#x2F;thread_pool_task_executor.cpp:659</span><br><span class="line">#7  0x00007f035e3ff7ad in mongo::executor::ThreadPoolTaskExecutor::scheduleIntoPool_inlock(mongo::executor::ThreadPoolTaskExecutor::WorkQueue*, const iterator&amp;, const iterator&amp;, std::unique_lock&lt;std::mutex&gt;)</span><br><span class="line">#16 0x00007f035e3fee44 in mongo::executor::ThreadPoolTaskExecutor::scheduleWorkAt(mongo::Date_t, mongo::executor::TaskExecutor::CallbackFn&amp;&amp;)</span><br><span class="line">#30 0x00007f035e43d6f2 in mongo::executor::NetworkInterfaceTL::_answerAlarm(mongo::Status, std::shared_ptr&lt;mongo::executor::NetworkInterfaceTL::AlarmState&gt;)</span><br></pre></td></tr></table></figure>
+
+
+
+<h2 id="PeriodicRunner-PeriodicJob"><a href="#PeriodicRunner-PeriodicJob" class="headerlink" title="PeriodicRunner::PeriodicJob"></a>PeriodicRunner::PeriodicJob</h2><p> Periodic* 类涉及3个接口：</p>
+<ul>
+<li><code>PeriodicJob</code> 描述一个周期性 job，接收3个参数：<strong>job名称 name, Job执行逻辑 callable, 执行间隔 period</strong></li>
+<li><code>ControllableJob : PeriodicJob</code> 实际执行逻辑，<em>start / pause / resume / stop</em> .      <ul>
+<li><code>PeriodicJobImpl</code> 继承实现了该类。</li>
+</ul>
+</li>
+<li><code>PeriodicJobAnchor</code> : 包装一个 <code>ControllableJob</code> ，用于控制 <code>ControllableJob</code> 的执行。<em>start / pause /     resume / stop</em> .</li>
+<li><code>PeriodicRunner</code> ： 提供一个<code>makeJob</code> – 初始化 <code>PeriodicJob</code> / <code>PeriodicJobImpl</code> / <code>PeriodicJobAnchor</code>.<ul>
+<li><code>PeriodicRunnerImpl</code> 继承实现了该类</li>
+</ul>
+</li>
+</ul>
+<p>上面这几个接口主要提供 job 的描述，job 运行的管理，但是也有2个比较奇怪的地方：</p>
+<ul>
+<li><code>PeriodicJobImpl</code> 看名称疑似 <code>PeriodicJob</code> 的具体实现，然而却是 <code>ControllableJob</code> 的实现</li>
+<li><code>PeriodicJobAnchor</code> 和 <code>ControllableJob</code> 都提供了 job 的 <em>start / pause / resume / stop</em> 行为。<code>PeriodicJobAnchor</code> 中包装一个 <code>ControllableJob</code> 对象 _handle，所有的 job 行为也都直接调用了 _handle 对应的函数</li>
+</ul>
+<p>每个 job 有独立的线程处理，线程的名称即为 job 的名称。job 的运行管理在 <code>PeriodicJobImpl::_run</code> 中实现，负责管理的 <em>pause / resume / stop</em> 等行为会修改 job 的执行状态，<code>_run</code> 在执行前根据被标记的执行状态作出具体的处理。</p>
+<p>正常情况下( RUNNING状态 )，_run 会调用 <code>clockSource-&gt;waitForConditionUntil</code>  ( _clockSource 为 <code>servicecontext -&gt;getPreciseClockSource()</code> )，这中间由于 <code>tracksSystemClock = true / waitable = null</code>，所以时间等待最终的实现是 <code>stdx::condition_variable.wait_util(lock, deadline);</code></p>
+<blockquote>
+<p><strong>Note:</strong>   PeriodicRunner::PeriodicJob 虽然进行初始化的时候传入的是一个 interval ，但是实际最终执行还是基于上次  job 开始执行的时间 + interval 获得一个 deadline 来定义下一次任务的触发时</p>
+</blockquote>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/MongoDB-ReplicaSetMonitor/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -2285,198 +2483,11 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
 
 
     
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/ReadingNote/WebsiteArchitecture/ReadingNote-WebsiteArchitecture-Scalability/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/ReadingNote/WebsiteArchitecture/ReadingNote-WebsiteArchitecture-Scalability/" itemprop="url">大型网站技术架构 - 网站的伸缩性架构</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2014-07-25T20:23:43+08:00">
-                2014-07-25
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/ReadingNote/" itemprop="url" rel="index">
-                    <span itemprop="name">ReadingNote</span>
-                  </a>
-                </span>
-
-                
-                
-                  ， 
-                
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/ReadingNote/WebsiteArchitecture/" itemprop="url" rel="index">
-                    <span itemprop="name">WebsiteArchitecture</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <h2 id="1-网站架构的伸缩性设计"><a href="#1-网站架构的伸缩性设计" class="headerlink" title="1.网站架构的伸缩性设计"></a>1.网站架构的伸缩性设计</h2><p>一般说来，网站的伸缩性设计可分成2类：一类是根据功能进行物理分离实现伸缩（横向，纵向）；一类是单一功能通过集群实现伸缩。</p>
-<p>具体说来集群伸缩性又可分为应用服务器集群伸缩性和数据服务器集群伸缩性。这两种集群由于对数据状态管理的不同，技术实现也有很大的区别。而数据服务器集群也可分为缓存数据服务器集群和存储数据服务器集群。</p>
-<h2 id="2-应用服务器集群的伸缩性设计"><a href="#2-应用服务器集群的伸缩性设计" class="headerlink" title="2.应用服务器集群的伸缩性设计"></a>2.应用服务器集群的伸缩性设计</h2><p>如果HTTP请求分发装置可以感知或者可以配置集群的服务器数量，可以及时发现及群众新上线或下线的服务器，并能向新上线的服务器分发请求，停止向已下线的服务器分发请求，那么就实现了应用服务器集群的伸缩性。这个HTTP请求分发装置被称作负载均衡服务器。</p>
-<ol>
-<li><strong>HTTP**</strong>重定向**<ol>
-<li>叙述：一台普通的应用服务器，返回302重定向</li>
-<li>缺点：浏览器需要2次请求服务器才能完成一次访问。重定向服务器自身处理能力是瓶颈。</li>
-</ol>
-</li>
-<li><strong>DNS**</strong>域名解析**<ol>
-<li>叙述：在DNS服务器中配置多个IP地址</li>
-<li>缺点：目前的DNS时多级解析，每一级DNS都可能`缓存A记录，因此下线某台服务器后，即使修改了DNS的A记录，也不能及时生效。</li>
-</ol>
-</li>
-<li><strong>反向代理（Nginx**</strong>）**<ol>
-<li>叙述：将请求根据负载均衡算法转发到不同的Web服务器上，Web服务器的响应也需要通过反向代理服务器返回给用户。</li>
-<li>缺点：反向代理时所有请求和相应的中转站，其性能很有可能成为瓶颈。</li>
-</ol>
-</li>
-<li><strong>IP**</strong>负载均衡**<ol>
-<li>叙述：内核进程更改目的IP地址，不需要经过用户进程（NAT转换）。相比于反向代理有更好的性能。</li>
-<li>缺点：所有请求相应都需要经过负载均衡服务器，集群的最大响应数据吞吐量受制于负载均衡服务器网卡带宽。对于提供下载服务或者视频服务的网站，难以满足需求。</li>
-</ol>
-</li>
-<li><strong>数据链路层反向代理</strong><ol>
-<li>叙述：在数据链路层直接修改mac地址进行负载均衡，不修改src，dest而进行数据分发。避免负载均衡服务器网卡带宽成为瓶颈。这种负载均衡方式有称作DR。</li>
-<li>被称作三角传输模式，时目前大型网站使用最广的一种负载均衡手段。</li>
-</ol>
-</li>
-</ol>
-<h2 id="3-分布式缓存集群的伸缩性设计"><a href="#3-分布式缓存集群的伸缩性设计" class="headerlink" title="3.分布式缓存集群的伸缩性设计"></a>3.分布式缓存集群的伸缩性设计</h2><p>和所有服务器都部署相同应用的应用服务器集群不同，分布式缓存服务器集群中不同服务器中缓存的数据各不相同，缓存访问请求不可以在缓存服务器集群中的任意一台处理，必须先找到缓存有需要数据的服务器才能访问。</p>
-<p>设计原则：必须让新上线的缓存服务器对整个分布式缓存集群影响最小，也就是说新加入缓存服务器后应使整个缓存服务器集群中已经缓存的数据尽可能的被访问到。</p>
-<p><strong>一致性哈希！！！</strong></p>
-<h2 id="4-数据存储服务器集群的伸缩性设计"><a href="#4-数据存储服务器集群的伸缩性设计" class="headerlink" title="4.数据存储服务器集群的伸缩性设计"></a>4.数据存储服务器集群的伸缩性设计</h2><p>缓存的目的时加速数据读取的速度并减轻数据存储服务器的负载压力，因此，部分缓存丢失不影响业务的正常处理。而数据存储服务器必须保证数据的可靠存储，任何情况下，都必须保证数据的可用性和正确性。</p>
-<h3 id="4-1关系数据库集群的伸缩性设计"><a href="#4-1关系数据库集群的伸缩性设计" class="headerlink" title="4.1关系数据库集群的伸缩性设计"></a>4.1关系数据库集群的伸缩性设计</h3><p>主从复制，读写分离，业务分库。Cobar</p>
-<h3 id="4-2NoSQL数据库的伸缩性设计"><a href="#4-2NoSQL数据库的伸缩性设计" class="headerlink" title="4.2NoSQL数据库的伸缩性设计"></a>4.2NoSQL数据库的伸缩性设计</h3>
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
   </section>
 
   
   <nav class="pagination">
-    <a class="extend prev" rel="prev" href="/">&lt;i class&#x3D;&quot;fa fa-angle-left&quot;&gt;&lt;&#x2F;i&gt;</a><a class="page-number" href="/">1</a><span class="page-number current">2</span>
+    <a class="extend prev" rel="prev" href="/">&lt;i class&#x3D;&quot;fa fa-angle-left&quot;&gt;&lt;&#x2F;i&gt;</a><a class="page-number" href="/">1</a><span class="page-number current">2</span><a class="page-number" href="/page/3/">3</a><a class="extend next" rel="next" href="/page/3/">&lt;i class&#x3D;&quot;fa fa-angle-right&quot;&gt;&lt;&#x2F;i&gt;</a>
   </nav>
 
 
@@ -2522,7 +2533,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">20</span>
+                  <span class="site-state-item-count">21</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -2533,7 +2544,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">18</span>
+                  <span class="site-state-item-count">19</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>

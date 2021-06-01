@@ -793,6 +793,372 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/LogicalSession/MongoDB-sharding-LogicalSession/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/sharding/LogicalSession/MongoDB-sharding-LogicalSession/" itemprop="url">MongoDB LogicalSession机制</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2021-03-05T10:39:38+08:00">
+                2021-03-05
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/" itemprop="url" rel="index">
+                    <span itemprop="name">sharding</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/LogicalSession/" itemprop="url" rel="index">
+                    <span itemprop="name">LogicalSession</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p>[TOC]</p>
+<pre class="mermaid">classDiagram
+    ServiceContext .. LogicalSessionCacheImpl
+  LogicalSessionCacheImpl --> SessionsCollectionSharded
+  LogicalSessionCacheImpl --> _reapSessionsOlderThanFn
+  LogicalSessionCacheImpl --> LogicalSessionRecord
+  LogicalSessionRecord .. sessionCollection
+  _reapSessionsOlderThanFn -- MongoDSessionCatalog : shardServer&configServer
+  _reapSessionsOlderThanFn -- RouterSessionCatalog : mongos
+  MongoDSessionCatalog .. SessionCatalog
+  RouterSessionCatalog .. SessionCatalog
+  ServiceContext .. SessionCatalog
+    SessionCatalog --> SessionRuntimeInfo
+    SessionCatalog .. transactionCollection
+
+  class LogicalSessionCacheImpl {
+      // LogicalSessionId -> LogicalSessionRecord
+      -LogicalSessionIdMap<LogicalSessionRecord> _activeSessions;
+      -LogicalSessionIdSet _endingSessions;
+      +vivify()
+      -_refresh()
+      -_reap()
+  }
+  class SessionCatalog {
+      -LogicalSessionId -> SessionRuntimeInfo
+  }
+  class LogicalSessionRecord {
+      +_id
+      +lastUse
+      +user
+  }
+  class sessionCollection {
+      <<collection>>
+  }
+  class transactionCollection {
+      <<collection>>
+  }</pre>
+
+
+
+
+
+<h2 id="LogicalSessionId"><a href="#LogicalSessionId" class="headerlink" title="LogicalSessionId"></a>LogicalSessionId</h2><h3 id="LogicalSession的标识-lsid"><a href="#LogicalSession的标识-lsid" class="headerlink" title="LogicalSession的标识 - lsid"></a>LogicalSession的标识 - lsid</h3><p>LogicalSession 由 “logical session id”(<code>lsid</code>) 标识。<code>lsid</code> 由两部分信息组成：</p>
+<ul>
+<li><code>id</code> - 全局唯一的id(UUID)，由 driver 或者 startSession命令 生成</li>
+<li><code>uid</code>(user id) - 登录用户的唯一标识 // 如果 authentication 开启</li>
+</ul>
+<h3 id="logicalSession-信息-lsid-生成"><a href="#logicalSession-信息-lsid-生成" class="headerlink" title="logicalSession 信息(lsid) 生成"></a>logicalSession 信息(<code>lsid</code>) 生成</h3><p><code>lsid</code>可以在 driver 生成，也可以在 server 生成</p>
+<ul>
+<li>driver 生成 <code>lsid</code> ( src/mongo/shell/session.js 中的 <code>ServerSession</code> )：driver在链接Server前，通过 <code>Mongo.prototype.startSession</code> 获得一个 <code>ServerSession</code>， <code>ServerSession</code> 初始化时，进行 <code>this.handle = client._startSession();</code> （实际上调用 C++ <code>MongoBase::Functions::_startSession::call</code> ）中生成 <code>lsid</code>. <code>ServerSession</code>也 提供了 <code>injectSessionId</code> &amp; <code>assignTransactionNumber</code> 分别为 cmd append <code>lsid</code> &amp; <code>txnNumber</code> 字段。</li>
+<li>server生成 <code>lsid</code>：则是提供了 <code>startSession</code> command 来支持（同时将 lsid 信息存储到 <code>logicalSessionCache</code> 中）。该命令返回一个UUID信息 <code>{ &quot;id&quot; : UUID(&quot;807bac7b-6a17-423e-9aaf-bb84682666bb&quot;) }</code></li>
+</ul>
+<h3 id="logicalSession-信息-lsid-处理"><a href="#logicalSession-信息-lsid-处理" class="headerlink" title="logicalSession 信息(lsid) 处理"></a>logicalSession 信息(<code>lsid</code>) 处理</h3><p>server 收到用户请求以后，在真正请求处理之前，会首先解析其中的<code>lsid</code> &amp; <code>txnNumber</code> 等信息并vivify（<code>initializeOperationSessionInfo</code>）。</p>
+<p>vivify(<code>LogicalSessionCacheImpl::vivify()</code>) 是将lsid信息添加到 <code>logicalSessionCache</code> 并更新其缓存entry的 lastUse 时间，除了收到用户请求时会进行 vivify 外：</p>
+<ul>
+<li>cursor checkout - <code>CursorManager::pinCursor()</code> &amp; <code>ClusterCursorManager::checkOutCursor()</code></li>
+<li><code>refreshSessions</code> command</li>
+</ul>
+<h3 id="存储lsid"><a href="#存储lsid" class="headerlink" title="存储lsid"></a>存储lsid</h3><p>每个节点（mongos、shard、config）都有一个 in-memory cache 缓存当前节点正在使用的 session 信息，称为 <code>logicalSessionCache</code> 。<code>logicalSessionCache</code> 中的每个 entry 包含：</p>
+<ul>
+<li><code>_id</code> - session 的 lsid</li>
+<li><code>user</code> - session 的 登录用户名</li>
+<li><code>lastUse</code> - session 上次使用的时间</li>
+</ul>
+<p><code>logicalSessionCache</code> 定期将 entry 信息持久化到 <code>config.system.sessions</code> 集合（被称为 <code>sessions collection</code>)中，这个集合的存储位置因MongoDB运行形态不同而改变：</p>
+<table>
+<thead>
+<tr>
+<th align="left">Cluster Type</th>
+<th align="left">Sessions Collection 持久存储位置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><code>Standalone</code></td>
+<td align="left"><code>logicalSessionCache</code> 所在的节点</td>
+</tr>
+<tr>
+<td align="left"><code>ReplicaSet</code></td>
+<td align="left">primary节点 并复制给 Seceondaries</td>
+</tr>
+<tr>
+<td align="left"><code>ShardedCluster</code></td>
+<td align="left">作为一个 sharded collection 存在 - 可以存在在各个shard上，且有多个chunk</td>
+</tr>
+</tbody></table>
+<p> <code>config.system.sessions</code> 集合中，在 <code>lastUse</code> 字段上会创建一个 TTL 索引，索引过期时间默认为 30min。也就是说如果一个 session 超过 30min 没有被使用，那么 TTL索引 就会将这个 session 在 <code>config.system.sessions</code> 中清理掉。</p>
+<h2 id="LogicalSessionCache-的-refresh机制-amp-reap机制"><a href="#LogicalSessionCache-的-refresh机制-amp-reap机制" class="headerlink" title="LogicalSessionCache 的 refresh机制 &amp; reap机制"></a>LogicalSessionCache 的 refresh机制 &amp; reap机制</h2><p><code>LogicalSessionCache</code> 中有 <code>_activeSessions</code> 和 <code>_endingSessions</code> 2个成员变量来存储 LogicalSession 信息。</p>
+<ul>
+<li><code>_activeSessions</code> 是一个 LogicalSessionId –&gt; LogicalSessionRecord 的 map结构<ul>
+<li>上文提到 LogicalSessionCache 中的每个 cache entry 实际上就是 <code>LogicalSessionRecord</code>。该结构体中包含 <code>_id</code> / <code>lastUse</code> / <code>user</code> 几个field。而系统在对某个 lsid 进行 vivify 的行为，就是在 <code>_activeSessions</code> 检索对应的 <code>LogicalSessionRecord</code>，如果能检索到，则更新其 <code>lastUse</code> ，检索不到则构造一个 <code>LogicalSessionRecord</code> 添加到 <code>_activeSessions</code>。</li>
+</ul>
+</li>
+<li><code>_endingSessions</code> 是存储 LogicalSessionId 的 一个set结构。主要用来标识通过 <code>endSessions</code> 命令显式关闭的session</li>
+</ul>
+<p><code>_activeSessions</code> &amp; <code>_endingSessions</code> 在接下来描述的 refresh机制 &amp; reap机制 中会与 <code>config.system.sessions</code> 集合交互，进行缓存信息的刷新。</p>
+<p>refresh &amp; reap 机制都是定时执行的，受 <code>logicalSessionRefreshMillis</code> 配置影响，默认时间间隔为 5min。</p>
+<h4 id="refresh-机制-–-LogicalSessionCacheImpl-refresh"><a href="#refresh-机制-–-LogicalSessionCacheImpl-refresh" class="headerlink" title="refresh 机制 – LogicalSessionCacheImpl::_refresh()"></a>refresh 机制 – <code>LogicalSessionCacheImpl::_refresh()</code></h4><h5 id="step1-初始状态处理"><a href="#step1-初始状态处理" class="headerlink" title="step1 - 初始状态处理"></a>step1 - 初始状态处理</h5><p>确认 <code>config.system.sessions</code> 状态正常</p>
+<ol>
+<li><code>ShardedCluster</code>的 <code>config.system.sessions</code> 以 sharded collection 的方式存在<ul>
+<li>对于 mongos&amp;shardServer，这里只会检查 <code>config.system.sessions</code> 集合是否存在。分片集群环境下，该集合的创建由 configServer 负责</li>
+<li>对于 configServer<ul>
+<li>检查 <code>config.system.sessions</code> 不存在，则会给自己发送一个 <code>_configsvrShardCollection</code> 的命令进行 shardCollection (shardKey: { _id: 1})</li>
+<li>向 <code>config.system.sessions</code> 相关的shard 发送 <code>createIndexes</code> 命令，{ “lastUse”: 1 } ，TTL 索引 ， 超时时间为 <strong>localLogicalSessionTimeoutMinutes</strong> 配置（默认30min）</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><code>ReplicaSet</code> - primary节点 并复制给 Seceondaries。验证index是否正确，如果不正确，primary节点直接进行修正（collMod or createIndexes），secondary节点则将请求发送给primary</li>
+<li><code>Standalone</code> - <code>config.system.sessions</code> 存储在当前节点。行为同 ReplicaSet 的 primary节点</li>
+</ol>
+<h5 id="step2-session-管理"><a href="#step2-session-管理" class="headerlink" title="step2 - session 管理"></a>step2 - session 管理</h5><p><strong>step2.1</strong> - 获取<code>activeSessions</code> &amp; <code>explicitlyEndingSessions</code> // 当前活跃的session 和 显示关闭的session</p>
+<ol>
+<li>通过加锁+swap的方式 拿到 <code>_activeSessions</code> &amp; <code>_endingSessions</code> 中存储的信息，分别存储到 <code>activeSessions</code> &amp; <code>explicitlyEndingSessions</code></li>
+<li>从 <code>activeSessions</code> 清理掉 <code>explicitlyEndingSessions</code> 中的 lsid</li>
+<li>获取正在运行的client的lsid，如果这些lsid没在 <code>explicitlyEndingSessions</code> 中则并添加到 <code>activeSessions</code></li>
+</ol>
+<p><strong>step2.2</strong> - 将 <code>activeSessions</code> 中的 session 更新到 <code>config.system.sessions</code></p>
+<blockquote>
+<p>md step1: All sessions that have been used on this node since the last refresh will be upserted to the sessions collection. This means that sessions that already exist in the sessions collection will just have their <code>lastUse</code> fields updated.</p>
+</blockquote>
+<p>对 <code>config.system.sessions</code> 进行如下操作</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">	<span class="attr">"update"</span>: <span class="string">"config.system.sessions"</span>,</span><br><span class="line">	<span class="attr">"ordered"</span>: <span class="literal">false</span>,</span><br><span class="line">	<span class="attr">"allowImplicitCollectionCreation"</span>: <span class="literal">false</span>,</span><br><span class="line">	<span class="attr">"writeConcern"</span>: <span class="string">"majority"</span>,</span><br><span class="line">	<span class="attr">"docSeq"</span>: [</span><br><span class="line">		&#123;"q": &#123;"_id": &lt;lsid&gt; &#125;, "u": &#123;&#123; $currentDate : &#123; lastUse : true &#125;, $setOnInsert : &#123; user : &lt;user&gt; &#125; &#125; &#125;, upsert: true&#125;</span><br><span class="line">	]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p><strong>step2.3</strong> - 将 <code>explicitlyEndingSessions</code> 中的 session 从 <code>config.system.sessions</code> 中移除</p>
+<blockquote>
+<p>md step2: All sessions that have been ended in the cache on this node (via the endSessions command) will be removed from the sessions collection.</p>
+</blockquote>
+<p>对 <code>config.system.sessions</code> 进行如下操作</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">	<span class="attr">"delete"</span>: <span class="string">"config.system.sessions"</span>,</span><br><span class="line">	<span class="attr">"ordered"</span>: <span class="literal">false</span>,</span><br><span class="line">	<span class="attr">"writeConcern"</span>: <span class="string">"majority"</span>,</span><br><span class="line">	<span class="attr">"docSeq"</span>: [</span><br><span class="line">		&#123;"q": &#123;"_id": &lt;lsid&gt; &#125;, limit: 0&#125;</span><br><span class="line">	]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h5 id="step3-cursor-管理"><a href="#step3-cursor-管理" class="headerlink" title="step3 - cursor 管理"></a>step3 - cursor 管理</h5><p><strong>step3.1</strong> - 获取 <code>openCursorSessions</code> // 处于打开状态的cursor对应的session</p>
+<ol>
+<li>从 <code>CursorManager</code> 中拿到所有未处于 killPending 状态的cursor 对应的session</li>
+<li>排除在 <code>_activeSessions</code> 中的session，因为前面对 <code>_activeSessions</code> &amp; <code>activeSessions</code> 进行swap，所以在 <code>_activeSessions</code> 中的session是新进入的请求，没有refresh到 <code>config.system.sessions</code>，所以需要排除</li>
+</ol>
+<p><strong>step3.2</strong> - 从 <code>config.system.sessions</code> 获取 <code>openCursorSessions</code> 中已经被remove的session（ <code>removedSessions</code>）</p>
+<blockquote>
+<p>md step3: Sessions that have expired from the sessions collection will be removed from the logical session cache on this node.</p>
+</blockquote>
+<p>这里实际上就是将 sessions 以 1000 为单位拆分成多个 batch，依次去 <code>config.system.sessions</code> 查询，过滤出不存在的session</p>
+<p><strong>step3.3</strong> - 关闭<code>removedSessions</code> 和 <code>explicitlyEndingSessions</code> 对应的 cursor</p>
+<blockquote>
+<p>md step4: All cursors registered on this node that match sessions that have been ended (md step 2) or were expired (md step 3) will be killed.</p>
+</blockquote>
+<h4 id="reap-机制-–-LogicalSessionCacheImpl-reap"><a href="#reap-机制-–-LogicalSessionCacheImpl-reap" class="headerlink" title="reap 机制 – LogicalSessionCacheImpl::_reap()"></a>reap 机制 – <code>LogicalSessionCacheImpl::_reap()</code></h4><p>mongos&amp;shardServer都会有一个 <code>SessionCatalog</code> 的组件来记录事务的一些运行状态</p>
+<p>reap机制就是从 <code>SessionCatalog</code> 中提取可能已经 expired 的session（上次活跃时间距离现在超过 <code>gTransactionRecordMinimumLifetimeMinutes</code>（30min））的session。</p>
+<p>再从 <code>config.system.sessions</code> 中获取上面session中确实已经被删除的session，将这些session在 <code>SessionCatalog</code> 中删除</p>
+<p>此外，primary节点中还会有一个 <code>config.transactions</code> 集合存储与 <code>SessionCatalog</code> 对应的记录作为持久化。所以还会其中与上面提到的session中对齐的信息，（分批删除，单次最多10000条）</p>
+<blockquote>
+<p>config.transaction  / SessionCatalog / MongoDSessionCatalog 会参与并记录当前节点的一些在执行的一些事务状态</p>
+</blockquote>
+<h2 id="LogicalSession-与-其他组件-的关系"><a href="#LogicalSession-与-其他组件-的关系" class="headerlink" title="LogicalSession 与 其他组件 的关系"></a>LogicalSession 与 其他组件 的关系</h2><h3 id="LogicalSession-与-opCtx-Cursor-的关系"><a href="#LogicalSession-与-opCtx-Cursor-的关系" class="headerlink" title="LogicalSession 与 opCtx/Cursor 的关系"></a>LogicalSession 与 opCtx/Cursor 的关系</h3><p>首先简单说下 <code>cursor</code> 和 <code>opCtx</code> 的关系。<code>cursor</code> 可能会被理解为是依附在 <code>opCtx</code> 中。但实际上 <code>cursor</code> 是一直存在的，而 <code>opCtx</code> 只有用户真正请求的时候才会被创建。<code>cursor</code> 在被使用命令使用的时候从 <code>ClusterCursorManager</code> 中 checkOut 出来，这时会reattach到 <code>opCtx</code> 中，而命令执行完需要再checkIn回 <code>ClusterCursorManager</code> 中，此时deattachFrom opCtx。</p>
+<p><code>opCtx</code> 中有 <code>setLogicalSessionId</code> 的入口，但是注释中说明可能只会设置一次：May only be called once for the lifetime of the operation. 这里主要会在请求初始化的时候，进行 <code>setLogicalSessionId</code> （即在 <code>initializeOperationSessionInfo</code>中进行）。其他场景有内部交互时新建 opCtx 也会set lsid。</p>
+<p><code>cursor</code> 中只在创建是可以指定lsid，后续只能getLsid。也就是说 cursor 和 lsid 是强绑定的关系。而在对 <code>cursor</code> checkOut时，也会默认基于 cursor 中存储的 lsid 进行校验。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// src/mongo/s/query/cluster_cursor_manager.cpp:348</span></span><br><span class="line"><span class="comment">// Check if the user is coauthorized to access this cursor.</span></span><br><span class="line"><span class="keyword">auto</span> authCheckStatus = authChecker(entry-&gt;getAuthenticatedUsers());</span><br><span class="line"><span class="keyword">if</span> (!authCheckStatus.isOK()) &#123;</span><br><span class="line">  <span class="keyword">return</span> authCheckStatus.withContext(str::stream()</span><br><span class="line">                                     &lt;&lt; <span class="string">"cursor id "</span> &lt;&lt; cursorId</span><br><span class="line">                                     &lt;&lt; <span class="string">" was not created by the authenticated user"</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>以下其中一个满足时才会允许checkOut：</p>
+<ul>
+<li>context session id must match cursor session id. // lsid 匹配</li>
+<li>user must be magic special (__system, or background task, etc)  // 内部任务或账号</li>
+</ul>
+<p>Q：sessionA创建了cursor，而sessionB使用cursor的id进行getMore 的行为是怎样的？</p>
+<p>sessionB 提供的 lsid 需要与cursor中存储的 lsid 匹配才能checkOut成功（即进行getMore）</p>
+<p>Q：session空闲，cursor一定空闲么？</p>
+<p>是的，cursor使用的时候会更新其上存储的lsid的lastUse，即创建当前cursor的session</p>
+<p>Q：cursor空闲，session一定空闲么？</p>
+<p>不是，session可能执行非cursor相关的命令</p>
+<h3 id="LogicalSession-与-txnNumber-的关系"><a href="#LogicalSession-与-txnNumber-的关系" class="headerlink" title="LogicalSession 与 txnNumber 的关系"></a>LogicalSession 与 txnNumber 的关系</h3><p>使用 <a href="https://docs.mongodb.com/manual/core/transactions-in-applications/#mongo-shell-example" target="_blank" rel="noopener">官方文档</a> 中提供的命令执行事务。 // 这里不执行最后的 <code>session.endSession();</code></p>
+<p>命令中显示进行了 <code>startSession()</code>，所以这里使用的lsid为：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">rs8400:PRIMARY&gt; session = db.getMongo().startSession( &#123; <span class="attr">readPreference</span>: &#123; <span class="attr">mode</span>: <span class="string">"primary"</span> &#125; &#125; );</span><br><span class="line">session &#123; <span class="string">"id"</span> : UUID(<span class="string">"97d5f526-6e95-4394-b6cf-683480499cdd"</span>) &#125;</span><br></pre></td></tr></table></figure>
+
+<p>最终server端打印的请求执行结果日志：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">2021-03-09T15:03:03.297+0800 I  TXN      [conn20] transaction parameters:&#123; lsid: &#123; id: UUID(&quot;97d5f526-6e95-4394-b6cf-683480499cdd&quot;), uid: BinData(0, C77E46E0CE3E66F5656583BC39832C6A39F0DD4BFCB780E25591864F05D3058E) &#125;, txnNumber: 0, autocommit: false ... terminationCause:committed timeActiveMicros:595 timeInactiveMicros:2572309 ...  wasPrepared:0, 2572ms</span><br></pre></td></tr></table></figure>
+
+<p>可以看到 <strong>txnNumber = 0</strong> </p>
+<p>重复执行 transaction 相关命令：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Start a transaction</span></span><br><span class="line">session.startTransaction( &#123; <span class="attr">readConcern</span>: &#123; <span class="attr">level</span>: <span class="string">"local"</span> &#125;, <span class="attr">writeConcern</span>: &#123; <span class="attr">w</span>: <span class="string">"majority"</span> &#125; &#125; );</span><br><span class="line"></span><br><span class="line"><span class="comment">// Operations inside the transaction</span></span><br><span class="line"><span class="keyword">try</span> &#123;</span><br><span class="line">   coll1.insertOne( &#123; <span class="attr">abc</span>: <span class="number">1</span> &#125; );</span><br><span class="line">   coll2.insertOne( &#123; <span class="attr">xyz</span>: <span class="number">999</span> &#125; );</span><br><span class="line">&#125; <span class="keyword">catch</span> (error) &#123;</span><br><span class="line">   <span class="comment">// Abort transaction on error</span></span><br><span class="line">   session.abortTransaction();</span><br><span class="line">   <span class="keyword">throw</span> error;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Commit the transaction using write concern set at transaction start</span></span><br><span class="line">session.commitTransaction();</span><br></pre></td></tr></table></figure>
+
+<p>这里没有 <code>startSession</code>，所以在server看到的日志为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">2021-03-09T15:04:15.058+0800 I  TXN      [conn20] transaction parameters:&#123; lsid: &#123; id: UUID(&quot;97d5f526-6e95-4394-b6cf-683480499cdd&quot;), uid: BinData(0, C77E46E0CE3E66F5656583BC39832C6A39F0DD4BFCB780E25591864F05D3058E) &#125;, txnNumber: 1, autocommit: false ... terminationCause:committed timeActiveMicros:482 timeInactiveMicros:924948 ... wasPrepared:0, 925ms</span><br></pre></td></tr></table></figure>
+
+<p>可以看到 lsid与上文相同，<strong>txnNumber = 1</strong></p>
+<h2 id="LogicalSession-相关指标"><a href="#LogicalSession-相关指标" class="headerlink" title="LogicalSession 相关指标"></a>LogicalSession 相关指标</h2><p>以mongos输出为例</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">mongos&gt; db.serverStatus().logicalSessionRecordCache</span><br><span class="line">&#123;</span><br><span class="line">	<span class="attr">"activeSessionsCount"</span> : <span class="number">1</span>,</span><br><span class="line">	<span class="attr">"sessionsCollectionJobCount"</span> : <span class="number">4321</span>,</span><br><span class="line">	<span class="attr">"lastSessionsCollectionJobDurationMillis"</span> : <span class="number">1</span>,</span><br><span class="line">	<span class="attr">"lastSessionsCollectionJobTimestamp"</span> : ISODate(<span class="string">"2021-03-11T11:46:11.029Z"</span>),</span><br><span class="line">	<span class="attr">"lastSessionsCollectionJobEntriesRefreshed"</span> : <span class="number">0</span>,</span><br><span class="line">	<span class="attr">"lastSessionsCollectionJobEntriesEnded"</span> : <span class="number">0</span>,</span><br><span class="line">	<span class="attr">"lastSessionsCollectionJobCursorsClosed"</span> : <span class="number">0</span>,</span><br><span class="line">	<span class="attr">"transactionReaperJobCount"</span> : <span class="number">4321</span>,</span><br><span class="line">	<span class="attr">"lastTransactionReaperJobDurationMillis"</span> : <span class="number">1</span>,</span><br><span class="line">	<span class="attr">"lastTransactionReaperJobTimestamp"</span> : ISODate(<span class="string">"2021-03-11T11:46:11.029Z"</span>),</span><br><span class="line">	<span class="attr">"lastTransactionReaperJobEntriesCleanedUp"</span> : <span class="number">0</span>,</span><br><span class="line">	<span class="attr">"sessionCatalogSize"</span> : <span class="number">0</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li><strong>activeSessionsCount : 上次刷新以来，缓存在内存中的本地活跃session数量</strong></li>
+<li><strong>sessionsCollectionJobCount : session refresh执行次数</strong></li>
+<li><strong>lastSessionsCollectionJobDurationMillis : 上次session refresh执行耗时</strong></li>
+<li>lastSessionsCollectionJobTimestamp : 上次session refresh发生的时间点</li>
+<li><strong>lastSessionsCollectionJobEntriesRefreshed : 上次session refresh期间，刷新的session数量</strong></li>
+<li><strong>lastSessionsCollectionJobEntriesEnded : 上次session refresh期间，结束的session数量</strong></li>
+<li><strong>lastSessionsCollectionJobCursorsClosed : 上次session refresh期间，关闭的cursor数量</strong></li>
+<li><strong>transactionReaperJobCount : transaction reaper执行次数</strong></li>
+<li><strong>lastTransactionReaperJobDurationMillis : 上次transaction reaper执行耗时</strong></li>
+<li>lastTransactionReaperJobTimestamp : 上次transaction reaper发生的时间点</li>
+<li><strong>lastTransactionReaperJobEntriesCleanedUp : 上次transaction reaper清理的entry数量</strong></li>
+<li><strong>sessionCatalogSize : [4.2] 内存中缓存的session数量</strong></li>
+</ul>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/StaleConfig/MongoDB-sharding-StaleConfig/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -2765,209 +3131,11 @@
 
 
     
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/MongoDB-Timer/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/MongoDB/MongoDB-Timer/" itemprop="url">MongoDB 源码中定时器机制</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-05-06T09:42:24+08:00">
-                2020-05-06
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
-                    <span itemprop="name">MongoDB</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <p>MongoDB 提供了2种定时执行机制</p>
-<ul>
-<li><code>TaskExecutor::scheduleWorkAt(Date_t when, CallbackFn&amp;&amp; work)</code></li>
-<li><code>PeriodicRunner::PeriodicJob</code></li>
-</ul>
-<h2 id="TaskExecutor-scheduleWorkAt"><a href="#TaskExecutor-scheduleWorkAt" class="headerlink" title="TaskExecutor::scheduleWorkAt"></a>TaskExecutor::scheduleWorkAt</h2><p><code>TaskExecutor::scheduleWorkAt</code> 提供了一个在指定时间 <code>when</code> 执行的方式，具体在 <code>ThreadPoolTaskExecutor</code> 中实现。</p>
-<p><code>ThreadPoolTaskExecutor</code>实现 <code>scheduleWorkAt</code> 方法和 <code>scheduleWork</code> 逻辑基本一致：将 <code>CallbackFn</code> 添加到一个 <code>WorkQueue</code> 中，并获得一个 <code>CallbackHandle</code>，随后将 <code>WorkQueue</code> 插入到 <code>_poolInProgressQueue</code> 中等待被处理。区别在于：</p>
-<ul>
-<li><code>scheduleWork</code> 将 <code>CallbackFn</code> 添加到一个 temp 的 WorkQueue，而 <code>scheduleWorkAt</code> 添加到 <code>_sleepersQueue</code></li>
-<li><code>scheduleWork</code> 中直接将 <code>WorkQueue</code> 中数据插入到 <code>_poolInProgressQueue</code> 中，而 <code>scheduleWorkAt</code> 则是通过 <code>_net::setAlarm</code> 注册一个时间 when 后回调插入的(<code>_net</code> 为一个 <code>NetworkInterfaceTL</code> 成员)。</li>
-</ul>
- <figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">StatusWith&lt;TaskExecutor::CallbackHandle&gt; <span class="title">ThreadPoolTaskExecutor::scheduleWorkAt</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">                                         Date_t when, CallbackFn&amp;&amp; work)</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="keyword">auto</span> wq = makeSingletonWorkQueue(<span class="built_in">std</span>::<span class="built_in">move</span>(work), <span class="literal">nullptr</span>, when);</span><br><span class="line">    ...</span><br><span class="line">    <span class="keyword">auto</span> cbHandle = enqueueCallbackState_inlock(&amp;_sleepersQueue, &amp;wq);</span><br><span class="line">    ...</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> status = _net-&gt;setAlarm(cbHandle.getValue(), </span><br><span class="line">                                 when, </span><br><span class="line">                                 [<span class="keyword">this</span>, cbHandle = cbHandle.getValue()](Status status) &#123;</span><br><span class="line">            ...</span><br><span class="line">            scheduleIntoPool_inlock(&amp;_sleepersQueue, cbState-&gt;iter, <span class="built_in">std</span>::<span class="built_in">move</span>(lk));</span><br><span class="line">        &#125;);</span><br><span class="line">    ...</span><br><span class="line">    <span class="keyword">return</span> cbHandle;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-
-
-<blockquote>
-<p> <strong>Note:</strong>   <code>scheduleWorkAt</code> 和 <code>scheduleWork</code> 都会返回一个 <code>TaskExecutor::CallbackHandle</code> 对象  <code>cbHandle</code>，这个 <code>cbHandle</code> <em>不是一个回调函数*，应该是表示回调状态 的一个对象， <code>CallbackHandle</code> 持有一个 <code>CallbackState</code> , 而 <code>CallbackState</code> 的类注释为 *”Class representing a  scheduled callback and providing methods for interacting with it.”</em></p>
-<p>具体的回调函数即上文提到的 <code>CallbackFn</code> 被添加到 <code>WorkQueue</code>  中，而后被添加到*   <code>_poolInProgressQueue</code> 等待被消费</p>
-</blockquote>
-<p><code>NetworkInterfaceTL::setAlarm</code> 接收 3 个入参：<code>cbHandle</code>, <code>when</code>, <code>action</code>，<code>cbHandle</code> 主要做一些 状态管理 、 合理性校验等逻辑。action即为当面提到的将 <code>WorkQueue</code> 添加到 <code>_poolInProgressQueue</code> 的回调。</p>
-<p><code>NetworkInterfaceTL::setAlarm</code> 中 构造了一个 <code>PromiseFuture</code> 对象 <strong>pf ( future为 action）</strong>，并将时间点 when，回调状态 <code>cbHandle</code>，新建一个 <code>ASIOReactorTimer timer</code>，以及 pf.promise 封装成一个 <code>AlarmState</code> 。然后调用 <code>timer-&gt;waitUntil( when )</code> 等待到达指定时间（witerUntil 实际上也是返回一个 Future），指定时间到达时调用 <code>_answerAlarm</code> 标记 满足 promise（及触发上文 action ）</p>
-<p> 关于指定时间执行的行为则在 <code>NetworkInterfaceTL::setAlarm</code> 中实现。</p>
-<p><code>ASIOReactorTimer</code> 中会持有一个 <code>_timer (asio::system_timer)</code> ，<code>waitUntil()</code> 中会依次调用 <code>_timer-&gt;expires_at()</code>, <code>_timer-&gt;async_wait()</code>进行计时等待</p>
-<p><strong>总结一下</strong>：<code>TaskExecutor::scheduleWorkAt</code> 实际上是基于 <code>asio::system_timer</code> 库实现的指定时间执行逻辑。</p>
-<ul>
-<li>指定时间到达后，会标记 满足 promise ，调用 <code>_answerAlarm</code> </li>
-<li><code>_answerAlarm</code> 中进行一系列判断后 也会标记 满足 promise ， 调用 action</li>
-<li>action 中 会将 <code>_sleepersQueue</code> 中的数据插入到 <code>_poolInProgressQueue</code> 排队等待执行</li>
-</ul>
-<p>由于 整个逻辑中回调函数比较多，所以堆栈会比较冗长，这里是以 为例的堆栈：</p>
-<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">#0  mongo::ReplicaSetMonitor::_doScheduledRefresh (this&#x3D;0x7f0362e0fb00, currentHandle&#x3D;...) at src&#x2F;mongo&#x2F;client&#x2F;replica_set_monitor.cpp:249</span><br><span class="line">#5  0x00007f035e3fdd28 in mongo::executor::ThreadPoolTaskExecutor::runCallback (this&#x3D;0x7f0362e19140, cbStateArg&#x3D;...) at src&#x2F;mongo&#x2F;executor&#x2F;thread_pool_task_executor.cpp:659</span><br><span class="line">#7  0x00007f035e3ff7ad in mongo::executor::ThreadPoolTaskExecutor::scheduleIntoPool_inlock(mongo::executor::ThreadPoolTaskExecutor::WorkQueue*, const iterator&amp;, const iterator&amp;, std::unique_lock&lt;std::mutex&gt;)</span><br><span class="line">#16 0x00007f035e3fee44 in mongo::executor::ThreadPoolTaskExecutor::scheduleWorkAt(mongo::Date_t, mongo::executor::TaskExecutor::CallbackFn&amp;&amp;)</span><br><span class="line">#30 0x00007f035e43d6f2 in mongo::executor::NetworkInterfaceTL::_answerAlarm(mongo::Status, std::shared_ptr&lt;mongo::executor::NetworkInterfaceTL::AlarmState&gt;)</span><br></pre></td></tr></table></figure>
-
-
-
-<h2 id="PeriodicRunner-PeriodicJob"><a href="#PeriodicRunner-PeriodicJob" class="headerlink" title="PeriodicRunner::PeriodicJob"></a>PeriodicRunner::PeriodicJob</h2><p> Periodic* 类涉及3个接口：</p>
-<ul>
-<li><code>PeriodicJob</code> 描述一个周期性 job，接收3个参数：<strong>job名称 name, Job执行逻辑 callable, 执行间隔 period</strong></li>
-<li><code>ControllableJob : PeriodicJob</code> 实际执行逻辑，<em>start / pause / resume / stop</em> .      <ul>
-<li><code>PeriodicJobImpl</code> 继承实现了该类。</li>
-</ul>
-</li>
-<li><code>PeriodicJobAnchor</code> : 包装一个 <code>ControllableJob</code> ，用于控制 <code>ControllableJob</code> 的执行。<em>start / pause /     resume / stop</em> .</li>
-<li><code>PeriodicRunner</code> ： 提供一个<code>makeJob</code> – 初始化 <code>PeriodicJob</code> / <code>PeriodicJobImpl</code> / <code>PeriodicJobAnchor</code>.<ul>
-<li><code>PeriodicRunnerImpl</code> 继承实现了该类</li>
-</ul>
-</li>
-</ul>
-<p>上面这几个接口主要提供 job 的描述，job 运行的管理，但是也有2个比较奇怪的地方：</p>
-<ul>
-<li><code>PeriodicJobImpl</code> 看名称疑似 <code>PeriodicJob</code> 的具体实现，然而却是 <code>ControllableJob</code> 的实现</li>
-<li><code>PeriodicJobAnchor</code> 和 <code>ControllableJob</code> 都提供了 job 的 <em>start / pause / resume / stop</em> 行为。<code>PeriodicJobAnchor</code> 中包装一个 <code>ControllableJob</code> 对象 _handle，所有的 job 行为也都直接调用了 _handle 对应的函数</li>
-</ul>
-<p>每个 job 有独立的线程处理，线程的名称即为 job 的名称。job 的运行管理在 <code>PeriodicJobImpl::_run</code> 中实现，负责管理的 <em>pause / resume / stop</em> 等行为会修改 job 的执行状态，<code>_run</code> 在执行前根据被标记的执行状态作出具体的处理。</p>
-<p>正常情况下( RUNNING状态 )，_run 会调用 <code>clockSource-&gt;waitForConditionUntil</code>  ( _clockSource 为 <code>servicecontext -&gt;getPreciseClockSource()</code> )，这中间由于 <code>tracksSystemClock = true / waitable = null</code>，所以时间等待最终的实现是 <code>stdx::condition_variable.wait_util(lock, deadline);</code></p>
-<blockquote>
-<p><strong>Note:</strong>   PeriodicRunner::PeriodicJob 虽然进行初始化的时候传入的是一个 interval ，但是实际最终执行还是基于上次  job 开始执行的时间 + interval 获得一个 deadline 来定义下一次任务的触发时</p>
-</blockquote>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
   </section>
 
   
   <nav class="pagination">
-    <span class="page-number current">1</span><a class="page-number" href="/page/2/">2</a><a class="extend next" rel="next" href="/page/2/">&lt;i class&#x3D;&quot;fa fa-angle-right&quot;&gt;&lt;&#x2F;i&gt;</a>
+    <span class="page-number current">1</span><a class="page-number" href="/page/2/">2</a><a class="page-number" href="/page/3/">3</a><a class="extend next" rel="next" href="/page/2/">&lt;i class&#x3D;&quot;fa fa-angle-right&quot;&gt;&lt;&#x2F;i&gt;</a>
   </nav>
 
 
@@ -3013,7 +3181,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">20</span>
+                  <span class="site-state-item-count">21</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -3024,7 +3192,7 @@
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">18</span>
+                  <span class="site-state-item-count">19</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>

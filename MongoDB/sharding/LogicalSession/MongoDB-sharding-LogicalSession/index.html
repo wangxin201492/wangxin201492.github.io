@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next pisces use-motion" lang="zh-Hans">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+  <link href="/lib/fancybox/source/jquery.fancybox.css?v=2.1.5" rel="stylesheet" type="text/css" />
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=5.1.4" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=5.1.4">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=5.1.4">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=5.1.4">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=5.1.4" color="#222">
+
+
+
+
+
+  <meta name="keywords" content="MongoDB-OTT," />
+
+
+
+
+
+
+
+
+
+
+<meta name="description" content="[TOC] classDiagram     ServiceContext .. LogicalSessionCacheImpl   LogicalSessionCacheImpl --&gt; SessionsCollectionSharded   LogicalSessionCacheImpl --&gt; _reapSessionsOlderThanFn   LogicalSessionCacheImp">
+<meta property="og:type" content="article">
+<meta property="og:title" content="MongoDB LogicalSession机制">
+<meta property="og:url" content="https://wangxin201492.github.io/MongoDB/sharding/LogicalSession/MongoDB-sharding-LogicalSession/index.html">
+<meta property="og:site_name" content="wangxin201492">
+<meta property="og:description" content="[TOC] classDiagram     ServiceContext .. LogicalSessionCacheImpl   LogicalSessionCacheImpl --&gt; SessionsCollectionSharded   LogicalSessionCacheImpl --&gt; _reapSessionsOlderThanFn   LogicalSessionCacheImp">
+<meta property="article:published_time" content="2021-03-05T02:39:38.000Z">
+<meta property="article:modified_time" content="2021-06-01T07:42:49.573Z">
+<meta property="article:author" content="wangxin201492">
+<meta property="article:tag" content="MongoDB-OTT">
+<meta name="twitter:card" content="summary">
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Pisces',
+    version: '5.1.4',
+    sidebar: {"position":"right","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: true,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    duoshuo: {
+      userId: '0',
+      author: '博主'
+    },
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+
+  <link rel="canonical" href="https://wangxin201492.github.io/MongoDB/sharding/LogicalSession/MongoDB-sharding-LogicalSession/"/>
+
+
+
+
+
+  <title>MongoDB LogicalSession机制 | wangxin201492</title>
+  
+
+
+
+
+
+  <script type="text/javascript">
+    var _hmt = _hmt || [];
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "https://hm.baidu.com/hm.js?b4b40ab284f92e7b4921a8198acda5b7";
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+  </script>
+
+
+
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-Hans">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-right page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/"  class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">wangxin201492</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle"></p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        <li class="menu-item menu-item-home">
+          <a href="/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            首页
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-tags">
+          <a href="/tags/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            标签
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-categories">
+          <a href="/categories/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            分类
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            归档
+          </a>
+        </li>
+      
+
+      
+    </ul>
+  
+
+  
+</nav>
+
+
+
+ </div>
+    </header>
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/LogicalSession/MongoDB-sharding-LogicalSession/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">MongoDB LogicalSession机制</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2021-03-05T10:39:38+08:00">
+                2021-03-05
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/" itemprop="url" rel="index">
+                    <span itemprop="name">sharding</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/LogicalSession/" itemprop="url" rel="index">
+                    <span itemprop="name">LogicalSession</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>[TOC]</p>
+<pre class="mermaid">classDiagram
+    ServiceContext .. LogicalSessionCacheImpl
+  LogicalSessionCacheImpl --> SessionsCollectionSharded
+  LogicalSessionCacheImpl --> _reapSessionsOlderThanFn
+  LogicalSessionCacheImpl --> LogicalSessionRecord
+  LogicalSessionRecord .. sessionCollection
+  _reapSessionsOlderThanFn -- MongoDSessionCatalog : shardServer&configServer
+  _reapSessionsOlderThanFn -- RouterSessionCatalog : mongos
+  MongoDSessionCatalog .. SessionCatalog
+  RouterSessionCatalog .. SessionCatalog
+  ServiceContext .. SessionCatalog
+    SessionCatalog --> SessionRuntimeInfo
+    SessionCatalog .. transactionCollection
+
+  class LogicalSessionCacheImpl {
+      // LogicalSessionId -> LogicalSessionRecord
+      -LogicalSessionIdMap<LogicalSessionRecord> _activeSessions;
+      -LogicalSessionIdSet _endingSessions;
+      +vivify()
+      -_refresh()
+      -_reap()
+  }
+  class SessionCatalog {
+      -LogicalSessionId -> SessionRuntimeInfo
+  }
+  class LogicalSessionRecord {
+      +_id
+      +lastUse
+      +user
+  }
+  class sessionCollection {
+      <<collection>>
+  }
+  class transactionCollection {
+      <<collection>>
+  }</pre>
+
+
+
+
+
+<h2 id="LogicalSessionId"><a href="#LogicalSessionId" class="headerlink" title="LogicalSessionId"></a>LogicalSessionId</h2><h3 id="LogicalSession的标识-lsid"><a href="#LogicalSession的标识-lsid" class="headerlink" title="LogicalSession的标识 - lsid"></a>LogicalSession的标识 - lsid</h3><p>LogicalSession 由 “logical session id”(<code>lsid</code>) 标识。<code>lsid</code> 由两部分信息组成：</p>
+<ul>
+<li><code>id</code> - 全局唯一的id(UUID)，由 driver 或者 startSession命令 生成</li>
+<li><code>uid</code>(user id) - 登录用户的唯一标识 // 如果 authentication 开启</li>
+</ul>
+<h3 id="logicalSession-信息-lsid-生成"><a href="#logicalSession-信息-lsid-生成" class="headerlink" title="logicalSession 信息(lsid) 生成"></a>logicalSession 信息(<code>lsid</code>) 生成</h3><p><code>lsid</code>可以在 driver 生成，也可以在 server 生成</p>
+<ul>
+<li>driver 生成 <code>lsid</code> ( src/mongo/shell/session.js 中的 <code>ServerSession</code> )：driver在链接Server前，通过 <code>Mongo.prototype.startSession</code> 获得一个 <code>ServerSession</code>， <code>ServerSession</code> 初始化时，进行 <code>this.handle = client._startSession();</code> （实际上调用 C++ <code>MongoBase::Functions::_startSession::call</code> ）中生成 <code>lsid</code>. <code>ServerSession</code>也 提供了 <code>injectSessionId</code> &amp; <code>assignTransactionNumber</code> 分别为 cmd append <code>lsid</code> &amp; <code>txnNumber</code> 字段。</li>
+<li>server生成 <code>lsid</code>：则是提供了 <code>startSession</code> command 来支持（同时将 lsid 信息存储到 <code>logicalSessionCache</code> 中）。该命令返回一个UUID信息 <code>{ &quot;id&quot; : UUID(&quot;807bac7b-6a17-423e-9aaf-bb84682666bb&quot;) }</code></li>
+</ul>
+<h3 id="logicalSession-信息-lsid-处理"><a href="#logicalSession-信息-lsid-处理" class="headerlink" title="logicalSession 信息(lsid) 处理"></a>logicalSession 信息(<code>lsid</code>) 处理</h3><p>server 收到用户请求以后，在真正请求处理之前，会首先解析其中的<code>lsid</code> &amp; <code>txnNumber</code> 等信息并vivify（<code>initializeOperationSessionInfo</code>）。</p>
+<p>vivify(<code>LogicalSessionCacheImpl::vivify()</code>) 是将lsid信息添加到 <code>logicalSessionCache</code> 并更新其缓存entry的 lastUse 时间，除了收到用户请求时会进行 vivify 外：</p>
+<ul>
+<li>cursor checkout - <code>CursorManager::pinCursor()</code> &amp; <code>ClusterCursorManager::checkOutCursor()</code></li>
+<li><code>refreshSessions</code> command</li>
+</ul>
+<h3 id="存储lsid"><a href="#存储lsid" class="headerlink" title="存储lsid"></a>存储lsid</h3><p>每个节点（mongos、shard、config）都有一个 in-memory cache 缓存当前节点正在使用的 session 信息，称为 <code>logicalSessionCache</code> 。<code>logicalSessionCache</code> 中的每个 entry 包含：</p>
+<ul>
+<li><code>_id</code> - session 的 lsid</li>
+<li><code>user</code> - session 的 登录用户名</li>
+<li><code>lastUse</code> - session 上次使用的时间</li>
+</ul>
+<p><code>logicalSessionCache</code> 定期将 entry 信息持久化到 <code>config.system.sessions</code> 集合（被称为 <code>sessions collection</code>)中，这个集合的存储位置因MongoDB运行形态不同而改变：</p>
+<table>
+<thead>
+<tr>
+<th align="left">Cluster Type</th>
+<th align="left">Sessions Collection 持久存储位置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><code>Standalone</code></td>
+<td align="left"><code>logicalSessionCache</code> 所在的节点</td>
+</tr>
+<tr>
+<td align="left"><code>ReplicaSet</code></td>
+<td align="left">primary节点 并复制给 Seceondaries</td>
+</tr>
+<tr>
+<td align="left"><code>ShardedCluster</code></td>
+<td align="left">作为一个 sharded collection 存在 - 可以存在在各个shard上，且有多个chunk</td>
+</tr>
+</tbody></table>
+<p> <code>config.system.sessions</code> 集合中，在 <code>lastUse</code> 字段上会创建一个 TTL 索引，索引过期时间默认为 30min。也就是说如果一个 session 超过 30min 没有被使用，那么 TTL索引 就会将这个 session 在 <code>config.system.sessions</code> 中清理掉。</p>
+<h2 id="LogicalSessionCache-的-refresh机制-amp-reap机制"><a href="#LogicalSessionCache-的-refresh机制-amp-reap机制" class="headerlink" title="LogicalSessionCache 的 refresh机制 &amp; reap机制"></a>LogicalSessionCache 的 refresh机制 &amp; reap机制</h2><p><code>LogicalSessionCache</code> 中有 <code>_activeSessions</code> 和 <code>_endingSessions</code> 2个成员变量来存储 LogicalSession 信息。</p>
+<ul>
+<li><code>_activeSessions</code> 是一个 LogicalSessionId –&gt; LogicalSessionRecord 的 map结构<ul>
+<li>上文提到 LogicalSessionCache 中的每个 cache entry 实际上就是 <code>LogicalSessionRecord</code>。该结构体中包含 <code>_id</code> / <code>lastUse</code> / <code>user</code> 几个field。而系统在对某个 lsid 进行 vivify 的行为，就是在 <code>_activeSessions</code> 检索对应的 <code>LogicalSessionRecord</code>，如果能检索到，则更新其 <code>lastUse</code> ，检索不到则构造一个 <code>LogicalSessionRecord</code> 添加到 <code>_activeSessions</code>。</li>
+</ul>
+</li>
+<li><code>_endingSessions</code> 是存储 LogicalSessionId 的 一个set结构。主要用来标识通过 <code>endSessions</code> 命令显式关闭的session</li>
+</ul>
+<p><code>_activeSessions</code> &amp; <code>_endingSessions</code> 在接下来描述的 refresh机制 &amp; reap机制 中会与 <code>config.system.sessions</code> 集合交互，进行缓存信息的刷新。</p>
+<p>refresh &amp; reap 机制都是定时执行的，受 <code>logicalSessionRefreshMillis</code> 配置影响，默认时间间隔为 5min。</p>
+<h4 id="refresh-机制-–-LogicalSessionCacheImpl-refresh"><a href="#refresh-机制-–-LogicalSessionCacheImpl-refresh" class="headerlink" title="refresh 机制 – LogicalSessionCacheImpl::_refresh()"></a>refresh 机制 – <code>LogicalSessionCacheImpl::_refresh()</code></h4><h5 id="step1-初始状态处理"><a href="#step1-初始状态处理" class="headerlink" title="step1 - 初始状态处理"></a>step1 - 初始状态处理</h5><p>确认 <code>config.system.sessions</code> 状态正常</p>
+<ol>
+<li><code>ShardedCluster</code>的 <code>config.system.sessions</code> 以 sharded collection 的方式存在<ul>
+<li>对于 mongos&amp;shardServer，这里只会检查 <code>config.system.sessions</code> 集合是否存在。分片集群环境下，该集合的创建由 configServer 负责</li>
+<li>对于 configServer<ul>
+<li>检查 <code>config.system.sessions</code> 不存在，则会给自己发送一个 <code>_configsvrShardCollection</code> 的命令进行 shardCollection (shardKey: { _id: 1})</li>
+<li>向 <code>config.system.sessions</code> 相关的shard 发送 <code>createIndexes</code> 命令，{ “lastUse”: 1 } ，TTL 索引 ， 超时时间为 <strong>localLogicalSessionTimeoutMinutes</strong> 配置（默认30min）</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><code>ReplicaSet</code> - primary节点 并复制给 Seceondaries。验证index是否正确，如果不正确，primary节点直接进行修正（collMod or createIndexes），secondary节点则将请求发送给primary</li>
+<li><code>Standalone</code> - <code>config.system.sessions</code> 存储在当前节点。行为同 ReplicaSet 的 primary节点</li>
+</ol>
+<h5 id="step2-session-管理"><a href="#step2-session-管理" class="headerlink" title="step2 - session 管理"></a>step2 - session 管理</h5><p><strong>step2.1</strong> - 获取<code>activeSessions</code> &amp; <code>explicitlyEndingSessions</code> // 当前活跃的session 和 显示关闭的session</p>
+<ol>
+<li>通过加锁+swap的方式 拿到 <code>_activeSessions</code> &amp; <code>_endingSessions</code> 中存储的信息，分别存储到 <code>activeSessions</code> &amp; <code>explicitlyEndingSessions</code></li>
+<li>从 <code>activeSessions</code> 清理掉 <code>explicitlyEndingSessions</code> 中的 lsid</li>
+<li>获取正在运行的client的lsid，如果这些lsid没在 <code>explicitlyEndingSessions</code> 中则并添加到 <code>activeSessions</code></li>
+</ol>
+<p><strong>step2.2</strong> - 将 <code>activeSessions</code> 中的 session 更新到 <code>config.system.sessions</code></p>
+<blockquote>
+<p>md step1: All sessions that have been used on this node since the last refresh will be upserted to the sessions collection. This means that sessions that already exist in the sessions collection will just have their <code>lastUse</code> fields updated.</p>
+</blockquote>
+<p>对 <code>config.system.sessions</code> 进行如下操作</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">	<span class="attr">"update"</span>: <span class="string">"config.system.sessions"</span>,</span><br><span class="line">	<span class="attr">"ordered"</span>: <span class="literal">false</span>,</span><br><span class="line">	<span class="attr">"allowImplicitCollectionCreation"</span>: <span class="literal">false</span>,</span><br><span class="line">	<span class="attr">"writeConcern"</span>: <span class="string">"majority"</span>,</span><br><span class="line">	<span class="attr">"docSeq"</span>: [</span><br><span class="line">		&#123;"q": &#123;"_id": &lt;lsid&gt; &#125;, "u": &#123;&#123; $currentDate : &#123; lastUse : true &#125;, $setOnInsert : &#123; user : &lt;user&gt; &#125; &#125; &#125;, upsert: true&#125;</span><br><span class="line">	]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p><strong>step2.3</strong> - 将 <code>explicitlyEndingSessions</code> 中的 session 从 <code>config.system.sessions</code> 中移除</p>
+<blockquote>
+<p>md step2: All sessions that have been ended in the cache on this node (via the endSessions command) will be removed from the sessions collection.</p>
+</blockquote>
+<p>对 <code>config.system.sessions</code> 进行如下操作</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">	<span class="attr">"delete"</span>: <span class="string">"config.system.sessions"</span>,</span><br><span class="line">	<span class="attr">"ordered"</span>: <span class="literal">false</span>,</span><br><span class="line">	<span class="attr">"writeConcern"</span>: <span class="string">"majority"</span>,</span><br><span class="line">	<span class="attr">"docSeq"</span>: [</span><br><span class="line">		&#123;"q": &#123;"_id": &lt;lsid&gt; &#125;, limit: 0&#125;</span><br><span class="line">	]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h5 id="step3-cursor-管理"><a href="#step3-cursor-管理" class="headerlink" title="step3 - cursor 管理"></a>step3 - cursor 管理</h5><p><strong>step3.1</strong> - 获取 <code>openCursorSessions</code> // 处于打开状态的cursor对应的session</p>
+<ol>
+<li>从 <code>CursorManager</code> 中拿到所有未处于 killPending 状态的cursor 对应的session</li>
+<li>排除在 <code>_activeSessions</code> 中的session，因为前面对 <code>_activeSessions</code> &amp; <code>activeSessions</code> 进行swap，所以在 <code>_activeSessions</code> 中的session是新进入的请求，没有refresh到 <code>config.system.sessions</code>，所以需要排除</li>
+</ol>
+<p><strong>step3.2</strong> - 从 <code>config.system.sessions</code> 获取 <code>openCursorSessions</code> 中已经被remove的session（ <code>removedSessions</code>）</p>
+<blockquote>
+<p>md step3: Sessions that have expired from the sessions collection will be removed from the logical session cache on this node.</p>
+</blockquote>
+<p>这里实际上就是将 sessions 以 1000 为单位拆分成多个 batch，依次去 <code>config.system.sessions</code> 查询，过滤出不存在的session</p>
+<p><strong>step3.3</strong> - 关闭<code>removedSessions</code> 和 <code>explicitlyEndingSessions</code> 对应的 cursor</p>
+<blockquote>
+<p>md step4: All cursors registered on this node that match sessions that have been ended (md step 2) or were expired (md step 3) will be killed.</p>
+</blockquote>
+<h4 id="reap-机制-–-LogicalSessionCacheImpl-reap"><a href="#reap-机制-–-LogicalSessionCacheImpl-reap" class="headerlink" title="reap 机制 – LogicalSessionCacheImpl::_reap()"></a>reap 机制 – <code>LogicalSessionCacheImpl::_reap()</code></h4><p>mongos&amp;shardServer都会有一个 <code>SessionCatalog</code> 的组件来记录事务的一些运行状态</p>
+<p>reap机制就是从 <code>SessionCatalog</code> 中提取可能已经 expired 的session（上次活跃时间距离现在超过 <code>gTransactionRecordMinimumLifetimeMinutes</code>（30min））的session。</p>
+<p>再从 <code>config.system.sessions</code> 中获取上面session中确实已经被删除的session，将这些session在 <code>SessionCatalog</code> 中删除</p>
+<p>此外，primary节点中还会有一个 <code>config.transactions</code> 集合存储与 <code>SessionCatalog</code> 对应的记录作为持久化。所以还会其中与上面提到的session中对齐的信息，（分批删除，单次最多10000条）</p>
+<blockquote>
+<p>config.transaction  / SessionCatalog / MongoDSessionCatalog 会参与并记录当前节点的一些在执行的一些事务状态</p>
+</blockquote>
+<h2 id="LogicalSession-与-其他组件-的关系"><a href="#LogicalSession-与-其他组件-的关系" class="headerlink" title="LogicalSession 与 其他组件 的关系"></a>LogicalSession 与 其他组件 的关系</h2><h3 id="LogicalSession-与-opCtx-Cursor-的关系"><a href="#LogicalSession-与-opCtx-Cursor-的关系" class="headerlink" title="LogicalSession 与 opCtx/Cursor 的关系"></a>LogicalSession 与 opCtx/Cursor 的关系</h3><p>首先简单说下 <code>cursor</code> 和 <code>opCtx</code> 的关系。<code>cursor</code> 可能会被理解为是依附在 <code>opCtx</code> 中。但实际上 <code>cursor</code> 是一直存在的，而 <code>opCtx</code> 只有用户真正请求的时候才会被创建。<code>cursor</code> 在被使用命令使用的时候从 <code>ClusterCursorManager</code> 中 checkOut 出来，这时会reattach到 <code>opCtx</code> 中，而命令执行完需要再checkIn回 <code>ClusterCursorManager</code> 中，此时deattachFrom opCtx。</p>
+<p><code>opCtx</code> 中有 <code>setLogicalSessionId</code> 的入口，但是注释中说明可能只会设置一次：May only be called once for the lifetime of the operation. 这里主要会在请求初始化的时候，进行 <code>setLogicalSessionId</code> （即在 <code>initializeOperationSessionInfo</code>中进行）。其他场景有内部交互时新建 opCtx 也会set lsid。</p>
+<p><code>cursor</code> 中只在创建是可以指定lsid，后续只能getLsid。也就是说 cursor 和 lsid 是强绑定的关系。而在对 <code>cursor</code> checkOut时，也会默认基于 cursor 中存储的 lsid 进行校验。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// src/mongo/s/query/cluster_cursor_manager.cpp:348</span></span><br><span class="line"><span class="comment">// Check if the user is coauthorized to access this cursor.</span></span><br><span class="line"><span class="keyword">auto</span> authCheckStatus = authChecker(entry-&gt;getAuthenticatedUsers());</span><br><span class="line"><span class="keyword">if</span> (!authCheckStatus.isOK()) &#123;</span><br><span class="line">  <span class="keyword">return</span> authCheckStatus.withContext(str::stream()</span><br><span class="line">                                     &lt;&lt; <span class="string">"cursor id "</span> &lt;&lt; cursorId</span><br><span class="line">                                     &lt;&lt; <span class="string">" was not created by the authenticated user"</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>以下其中一个满足时才会允许checkOut：</p>
+<ul>
+<li>context session id must match cursor session id. // lsid 匹配</li>
+<li>user must be magic special (__system, or background task, etc)  // 内部任务或账号</li>
+</ul>
+<p>Q：sessionA创建了cursor，而sessionB使用cursor的id进行getMore 的行为是怎样的？</p>
+<p>sessionB 提供的 lsid 需要与cursor中存储的 lsid 匹配才能checkOut成功（即进行getMore）</p>
+<p>Q：session空闲，cursor一定空闲么？</p>
+<p>是的，cursor使用的时候会更新其上存储的lsid的lastUse，即创建当前cursor的session</p>
+<p>Q：cursor空闲，session一定空闲么？</p>
+<p>不是，session可能执行非cursor相关的命令</p>
+<h3 id="LogicalSession-与-txnNumber-的关系"><a href="#LogicalSession-与-txnNumber-的关系" class="headerlink" title="LogicalSession 与 txnNumber 的关系"></a>LogicalSession 与 txnNumber 的关系</h3><p>使用 <a href="https://docs.mongodb.com/manual/core/transactions-in-applications/#mongo-shell-example" target="_blank" rel="noopener">官方文档</a> 中提供的命令执行事务。 // 这里不执行最后的 <code>session.endSession();</code></p>
+<p>命令中显示进行了 <code>startSession()</code>，所以这里使用的lsid为：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">rs8400:PRIMARY&gt; session = db.getMongo().startSession( &#123; <span class="attr">readPreference</span>: &#123; <span class="attr">mode</span>: <span class="string">"primary"</span> &#125; &#125; );</span><br><span class="line">session &#123; <span class="string">"id"</span> : UUID(<span class="string">"97d5f526-6e95-4394-b6cf-683480499cdd"</span>) &#125;</span><br></pre></td></tr></table></figure>
+
+<p>最终server端打印的请求执行结果日志：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">2021-03-09T15:03:03.297+0800 I  TXN      [conn20] transaction parameters:&#123; lsid: &#123; id: UUID(&quot;97d5f526-6e95-4394-b6cf-683480499cdd&quot;), uid: BinData(0, C77E46E0CE3E66F5656583BC39832C6A39F0DD4BFCB780E25591864F05D3058E) &#125;, txnNumber: 0, autocommit: false ... terminationCause:committed timeActiveMicros:595 timeInactiveMicros:2572309 ...  wasPrepared:0, 2572ms</span><br></pre></td></tr></table></figure>
+
+<p>可以看到 <strong>txnNumber = 0</strong> </p>
+<p>重复执行 transaction 相关命令：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Start a transaction</span></span><br><span class="line">session.startTransaction( &#123; <span class="attr">readConcern</span>: &#123; <span class="attr">level</span>: <span class="string">"local"</span> &#125;, <span class="attr">writeConcern</span>: &#123; <span class="attr">w</span>: <span class="string">"majority"</span> &#125; &#125; );</span><br><span class="line"></span><br><span class="line"><span class="comment">// Operations inside the transaction</span></span><br><span class="line"><span class="keyword">try</span> &#123;</span><br><span class="line">   coll1.insertOne( &#123; <span class="attr">abc</span>: <span class="number">1</span> &#125; );</span><br><span class="line">   coll2.insertOne( &#123; <span class="attr">xyz</span>: <span class="number">999</span> &#125; );</span><br><span class="line">&#125; <span class="keyword">catch</span> (error) &#123;</span><br><span class="line">   <span class="comment">// Abort transaction on error</span></span><br><span class="line">   session.abortTransaction();</span><br><span class="line">   <span class="keyword">throw</span> error;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Commit the transaction using write concern set at transaction start</span></span><br><span class="line">session.commitTransaction();</span><br></pre></td></tr></table></figure>
+
+<p>这里没有 <code>startSession</code>，所以在server看到的日志为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">2021-03-09T15:04:15.058+0800 I  TXN      [conn20] transaction parameters:&#123; lsid: &#123; id: UUID(&quot;97d5f526-6e95-4394-b6cf-683480499cdd&quot;), uid: BinData(0, C77E46E0CE3E66F5656583BC39832C6A39F0DD4BFCB780E25591864F05D3058E) &#125;, txnNumber: 1, autocommit: false ... terminationCause:committed timeActiveMicros:482 timeInactiveMicros:924948 ... wasPrepared:0, 925ms</span><br></pre></td></tr></table></figure>
+
+<p>可以看到 lsid与上文相同，<strong>txnNumber = 1</strong></p>
+<h2 id="LogicalSession-相关指标"><a href="#LogicalSession-相关指标" class="headerlink" title="LogicalSession 相关指标"></a>LogicalSession 相关指标</h2><p>以mongos输出为例</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">mongos&gt; db.serverStatus().logicalSessionRecordCache</span><br><span class="line">&#123;</span><br><span class="line">	<span class="attr">"activeSessionsCount"</span> : <span class="number">1</span>,</span><br><span class="line">	<span class="attr">"sessionsCollectionJobCount"</span> : <span class="number">4321</span>,</span><br><span class="line">	<span class="attr">"lastSessionsCollectionJobDurationMillis"</span> : <span class="number">1</span>,</span><br><span class="line">	<span class="attr">"lastSessionsCollectionJobTimestamp"</span> : ISODate(<span class="string">"2021-03-11T11:46:11.029Z"</span>),</span><br><span class="line">	<span class="attr">"lastSessionsCollectionJobEntriesRefreshed"</span> : <span class="number">0</span>,</span><br><span class="line">	<span class="attr">"lastSessionsCollectionJobEntriesEnded"</span> : <span class="number">0</span>,</span><br><span class="line">	<span class="attr">"lastSessionsCollectionJobCursorsClosed"</span> : <span class="number">0</span>,</span><br><span class="line">	<span class="attr">"transactionReaperJobCount"</span> : <span class="number">4321</span>,</span><br><span class="line">	<span class="attr">"lastTransactionReaperJobDurationMillis"</span> : <span class="number">1</span>,</span><br><span class="line">	<span class="attr">"lastTransactionReaperJobTimestamp"</span> : ISODate(<span class="string">"2021-03-11T11:46:11.029Z"</span>),</span><br><span class="line">	<span class="attr">"lastTransactionReaperJobEntriesCleanedUp"</span> : <span class="number">0</span>,</span><br><span class="line">	<span class="attr">"sessionCatalogSize"</span> : <span class="number">0</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li><strong>activeSessionsCount : 上次刷新以来，缓存在内存中的本地活跃session数量</strong></li>
+<li><strong>sessionsCollectionJobCount : session refresh执行次数</strong></li>
+<li><strong>lastSessionsCollectionJobDurationMillis : 上次session refresh执行耗时</strong></li>
+<li>lastSessionsCollectionJobTimestamp : 上次session refresh发生的时间点</li>
+<li><strong>lastSessionsCollectionJobEntriesRefreshed : 上次session refresh期间，刷新的session数量</strong></li>
+<li><strong>lastSessionsCollectionJobEntriesEnded : 上次session refresh期间，结束的session数量</strong></li>
+<li><strong>lastSessionsCollectionJobCursorsClosed : 上次session refresh期间，关闭的cursor数量</strong></li>
+<li><strong>transactionReaperJobCount : transaction reaper执行次数</strong></li>
+<li><strong>lastTransactionReaperJobDurationMillis : 上次transaction reaper执行耗时</strong></li>
+<li>lastTransactionReaperJobTimestamp : 上次transaction reaper发生的时间点</li>
+<li><strong>lastTransactionReaperJobEntriesCleanedUp : 上次transaction reaper清理的entry数量</strong></li>
+<li><strong>sessionCatalogSize : [4.2] 内存中缓存的session数量</strong></li>
+</ul>
+
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+      <div>
+        <div style="padding: 10px 0; margin: 20px auto; width: 90%; text-align: center;">
+  <div>坚持原创技术分享，您的支持将鼓励我继续创作！</div>
+  <button id="rewardButton" disable="enable" onclick="var qr = document.getElementById('QR'); if (qr.style.display === 'none') {qr.style.display='block';} else {qr.style.display='none'}">
+    <span>打赏</span>
+  </button>
+  <div id="QR" style="display: none;">
+
+    
+      <div id="wechat" style="display: inline-block">
+        <img id="wechat_qr" src="/images/wechat.jpg" alt="wangxin201492 微信支付"/>
+        <p>微信支付</p>
+      </div>
+    
+
+    
+      <div id="alipay" style="display: inline-block">
+        <img id="alipay_qr" src="/images/alipay.jpg" alt="wangxin201492 支付宝"/>
+        <p>支付宝</p>
+      </div>
+    
+
+    
+
+  </div>
+</div>
+
+      </div>
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/MongoDB-OTT/" rel="tag"># MongoDB-OTT</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/MongoDB/sharding/StaleConfig/MongoDB-sharding-StaleConfig/" rel="next" title="MongoDB sharding 路由刷新策略">
+                <i class="fa fa-chevron-left"></i> MongoDB sharding 路由刷新策略
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/MongoDB/sharding/MongoDB-sharding-troubleshoot-cacheRefreshX/" rel="prev" title="MongoDB 路由表刷新导致响应慢">
+                MongoDB 路由表刷新导致响应慢 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">wangxin201492</p>
+              <p class="site-description motion-element" itemprop="description">my blogs</p>
+          </div>
+
+          <nav class="site-state motion-element">
+
+            
+              <div class="site-state-item site-state-posts">
+              
+                <a href="/archives/">
+              
+                  <span class="site-state-item-count">21</span>
+                  <span class="site-state-item-name">日志</span>
+                </a>
+              </div>
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-categories">
+                <a href="/categories/index.html">
+                  <span class="site-state-item-count">19</span>
+                  <span class="site-state-item-name">分类</span>
+                </a>
+              </div>
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-tags">
+                <a href="/tags/index.html">
+                  <span class="site-state-item-count">22</span>
+                  <span class="site-state-item-name">标签</span>
+                </a>
+              </div>
+            
+
+          </nav>
+
+          
+
+          
+            <div class="links-of-author motion-element">
+                
+                  <span class="links-of-author-item">
+                    <a href="https://github.com/wangxin201492" target="_blank" title="GitHub">
+                      
+                        <i class="fa fa-fw fa-github"></i>GitHub</a>
+                  </span>
+                
+                  <span class="links-of-author-item">
+                    <a href="mailto:wangxin201492@sina.com" target="_blank" title="E-Mail">
+                      
+                        <i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+                  </span>
+                
+            </div>
+          
+
+          
+          
+
+          
+          
+
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#LogicalSessionId"><span class="nav-number">1.</span> <span class="nav-text">LogicalSessionId</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#LogicalSession的标识-lsid"><span class="nav-number">1.1.</span> <span class="nav-text">LogicalSession的标识 - lsid</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#logicalSession-信息-lsid-生成"><span class="nav-number">1.2.</span> <span class="nav-text">logicalSession 信息(lsid) 生成</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#logicalSession-信息-lsid-处理"><span class="nav-number">1.3.</span> <span class="nav-text">logicalSession 信息(lsid) 处理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#存储lsid"><span class="nav-number">1.4.</span> <span class="nav-text">存储lsid</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#LogicalSessionCache-的-refresh机制-amp-reap机制"><span class="nav-number">2.</span> <span class="nav-text">LogicalSessionCache 的 refresh机制 &amp; reap机制</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#refresh-机制-–-LogicalSessionCacheImpl-refresh"><span class="nav-number">2.0.1.</span> <span class="nav-text">refresh 机制 – LogicalSessionCacheImpl::_refresh()</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#step1-初始状态处理"><span class="nav-number">2.0.1.1.</span> <span class="nav-text">step1 - 初始状态处理</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#step2-session-管理"><span class="nav-number">2.0.1.2.</span> <span class="nav-text">step2 - session 管理</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#step3-cursor-管理"><span class="nav-number">2.0.1.3.</span> <span class="nav-text">step3 - cursor 管理</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#reap-机制-–-LogicalSessionCacheImpl-reap"><span class="nav-number">2.0.2.</span> <span class="nav-text">reap 机制 – LogicalSessionCacheImpl::_reap()</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#LogicalSession-与-其他组件-的关系"><span class="nav-number">3.</span> <span class="nav-text">LogicalSession 与 其他组件 的关系</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#LogicalSession-与-opCtx-Cursor-的关系"><span class="nav-number">3.1.</span> <span class="nav-text">LogicalSession 与 opCtx&#x2F;Cursor 的关系</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#LogicalSession-与-txnNumber-的关系"><span class="nav-number">3.2.</span> <span class="nav-text">LogicalSession 与 txnNumber 的关系</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#LogicalSession-相关指标"><span class="nav-number">4.</span> <span class="nav-text">LogicalSession 相关指标</span></a></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; 2020 &mdash; <span itemprop="copyrightYear">2021</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">wangxin201492</span>
+
+  
+</div>
+
+
+  <div class="powered-by">由 <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a> 强力驱动</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/iissnan/hexo-theme-next">NexT.Pisces</a> v5.1.4</div>
+
+
+
+
+
+  <script src='https://unpkg.com/mermaid@7.1.2/dist/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize("");
+    }
+  </script>
+
+
+        
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/fastclick/lib/fastclick.min.js?v=1.0.6"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery_lazyload/jquery.lazyload.js?v=1.9.7"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/fancybox/source/jquery.fancybox.pack.js?v=2.1.5"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=5.1.4"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=5.1.4"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=5.1.4"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=5.1.4"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.1.4"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.1.4"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=5.1.4"></script>
+
+
+
+  
+
+
+  
+
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>
