@@ -260,6 +260,197 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/write/oplog/MongoDB-WRITE-oplog-insert/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/write/oplog/MongoDB-WRITE-oplog-insert/" itemprop="url">Oplog 是如何写入的？</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2021-06-04T10:09:10+08:00">
+                2021-06-04
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/write/" itemprop="url" rel="index">
+                    <span itemprop="name">write</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/write/oplog/" itemprop="url" rel="index">
+                    <span itemprop="name">oplog</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p>[TOC]</p>
+<h2 id="Oplog写入的相关组件"><a href="#Oplog写入的相关组件" class="headerlink" title="Oplog写入的相关组件"></a>Oplog写入的相关组件</h2><h3 id="OpObserver"><a href="#OpObserver" class="headerlink" title="OpObserver"></a>OpObserver</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * The OpObserver interface contains methods that get called on certain database events. It provides</span></span><br><span class="line"><span class="comment"> * a way for various server subsystems to be notified of other events throughout the server.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * In order to call any OpObserver method, you must be in a 'WriteUnitOfWork' ...</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">OpObserver</span> &#123;</span>&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>OpObserver</code> 包含了各种事件对应的 methods（ <code>onInserts</code> / <code>onUpdate</code> / <code>onDelete</code> 等等事件），这样便于其他子系统知晓这些event。调用任何的 <code>OpObserver</code> 方法都需要在 <code>WriteUnitOfWork</code> 中，也就意味着所有需要的lock都已经被 <code>WriteUnitOfWork</code> 持有。</p>
+<p>mongod进程初始化的时候会 add 多个 <code>OpObserver</code> 的实现：<code>OpObserverShardingImpl</code> / <code>AuthOpObserver</code> ，对于shardServer会add <code>ShardServerOpObserver</code> ，对于 configServer 会 add <code>ConfigServerOpObserver</code>：</p>
+<ul>
+<li><code>AuthOpObserver</code> 只监听跟权限变更相关的oplog，具体实现在 <code>AuthzManagerExternalStateLocal::logOp()</code></li>
+<li><code>ShardServerOpObserver</code>  &amp; <code>ConfigServerOpObserver</code> 都只会监听几个特定的oplog</li>
+<li>主要的 oplog 写入行为在 <code>OpObserverShardingImpl</code>中完成，对于非事务的oplog，以 onInserts 为例，这里主要完成2件事情：<ul>
+<li>通过 <code>_logOpWriter</code> 组装一条待写入 OplogDoc，通过 <code>_logOpsInner</code> 进行数据写入（此处又回调到<code>CollectionImpl::insertDocumentsForOplog</code>来完成实际的写入）</li>
+<li>旁路写入 <code>shardObserveInsertOp</code> ，如果当前shard是moveChunk的源，这里会从oplog中提取信息记录在内存中，方便增量同步用</li>
+</ul>
+</li>
+</ul>
+<h3 id="RecoveryUnit"><a href="#RecoveryUnit" class="headerlink" title="RecoveryUnit"></a>RecoveryUnit</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * A RecoveryUnit is responsible for ensuring that data is persisted.</span></span><br><span class="line"><span class="comment"> * All on-disk information must be mutated through this interface.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">RecoveryUnit</span> &#123;</span>&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>RecoveryUnit</code> 负责确保数据的持久化，所有磁盘操作都必须通过该接口完成。实际上 <code>RecoveryUnit</code> 可以理解为 server层 的事务入口，storage层负责与引擎对接时需要实现这个接口。<code>RecoveryUnit</code> 提供了基础的 begin、commit、abort等操作，提供了Rollback&amp;commit时的callback事件设置入口，同时也提供了时间戳设置的接口。</p>
+<p>在 storageEngine init 的时候，会注册一个 <code>StorageClientObserver</code>，当opCtx初始化的时候，为opCtx设置当前使用引擎的 <code>RecoveryUnit</code>，以 wiredTiger为例，使用的就是 <code>WiredTigerRecoveryUnit</code>。</p>
+<h3 id="WriteUnitOfWork"><a href="#WriteUnitOfWork" class="headerlink" title="WriteUnitOfWork"></a>WriteUnitOfWork</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * The WriteUnitOfWork is an RAII type that begins a storage engine write unit of work on both the</span></span><br><span class="line"><span class="comment"> * Locker and the RecoveryUnit of the OperationContext. Any writes that occur during the lifetime of</span></span><br><span class="line"><span class="comment"> * this object will be committed when commit() is called, and rolled back (aborted) when the object</span></span><br><span class="line"><span class="comment"> * is destructed without a call to commit() or release().</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">WriteUnitOfWork</span> &#123;</span>&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>WriteUnitOfWork</code> 是一个 RAII 风格类，操作 opCtx 的 <code>Locker</code> &amp; <code>RecoveryUnit</code> 上开始存储引擎的写入工作单元。</p>
+<h2 id="insert时-Oplog写入流程"><a href="#insert时-Oplog写入流程" class="headerlink" title="insert时 Oplog写入流程"></a>insert时 Oplog写入流程</h2><p>insert 因为不涉及查询优化，这里的执行路径比较简单，先来看下insert时 oplog的插入流程。</p>
+<p>在 <code>insertDocuments()</code> 时会开启一个 <code>WriteUnitOfWork</code>，并为请求分配optime，随后 <code>CollectionImpl::insertDocuments()</code> 来进行数据插入，其中会依次写数据、写索引，并将oplog传播给 <code>OpObserver</code>。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// src/mongo/db/ops/write_ops_exec.cpp:295</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">insertDocuments</span><span class="params">( ... )</span> </span>&#123;</span><br><span class="line">    <span class="comment">// Intentionally not using writeConflictRetry. That is handled by the caller so it can react to</span></span><br><span class="line">    <span class="comment">// oversized batches.</span></span><br><span class="line">    <span class="function">WriteUnitOfWork <span class="title">wuow</span><span class="params">(opCtx)</span></span>;</span><br><span class="line">		...</span><br><span class="line">    <span class="comment">// 非事务的insert会分配时间戳</span></span><br><span class="line">    <span class="keyword">auto</span> oplogSlots = repl::getNextOpTimes(opCtx, batchSize);</span><br><span class="line">  	...</span><br><span class="line">    uassertStatusOK(</span><br><span class="line">        collection-&gt;insertDocuments(opCtx, <span class="built_in">begin</span>, <span class="built_in">end</span>, &amp;CurOp::<span class="built_in">get</span>(opCtx)-&gt;debug(), fromMigrate));</span><br><span class="line">    wuow.commit();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// src/mongo/db/catalog/collection_impl.cpp:432</span></span><br><span class="line"><span class="function">Status <span class="title">CollectionImpl::insertDocuments</span><span class="params">( ... )</span> </span>&#123;</span><br><span class="line">  	...</span><br><span class="line">    <span class="keyword">const</span> SnapshotId sid = opCtx-&gt;recoveryUnit()-&gt;getSnapshotId();</span><br><span class="line"></span><br><span class="line">  	<span class="comment">// 写数据、写索引</span></span><br><span class="line">    status = _insertDocuments(opCtx, <span class="built_in">begin</span>, <span class="built_in">end</span>, opDebug);</span><br><span class="line">    <span class="keyword">if</span> (!status.isOK()) &#123;</span><br><span class="line">        <span class="keyword">return</span> status;</span><br><span class="line">    &#125;</span><br><span class="line">    invariant(sid == opCtx-&gt;recoveryUnit()-&gt;getSnapshotId());</span><br><span class="line"></span><br><span class="line">  	<span class="comment">// oplog 传播给 OpObserver</span></span><br><span class="line">    getGlobalServiceContext()-&gt;getOpObserver()-&gt;onInserts(</span><br><span class="line">        opCtx, ns(), uuid(), <span class="built_in">begin</span>, <span class="built_in">end</span>, fromMigrate);</span><br><span class="line"></span><br><span class="line">  	<span class="comment">// 注册 onCommit 回调</span></span><br><span class="line">    opCtx-&gt;recoveryUnit()-&gt;onCommit(</span><br><span class="line">        [<span class="keyword">this</span>](boost::optional&lt;Timestamp&gt;) &#123; notifyCappedWaitersIfNeeded(); &#125;);</span><br><span class="line">		...</span><br><span class="line">    <span class="keyword">return</span> Status::OK();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>注册的 <code>OpObserver</code> 会依次捕获该 oplog 写入事件进行处理，如上文提到，真正写 oplog 在 <code>OpObserverShardingImpl</code> 中完成，最终会构造一个 <code>DocWriter</code> 并调用 <code>CollectionImpl::insertDocumentsForOplog</code> 来进行实际写入。</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/clusterTime/MongoDB-sharding-clusterTime/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -279,7 +470,7 @@
         
           <h1 class="post-title" itemprop="name headline">
                 
-                <a class="post-title-link" href="/MongoDB/sharding/clusterTime/MongoDB-sharding-clusterTime/" itemprop="url">MongoDB-sharding-clusterTime</a></h1>
+                <a class="post-title-link" href="/MongoDB/sharding/clusterTime/MongoDB-sharding-clusterTime/" itemprop="url">MongoDB集群中的 clusterTime</a></h1>
         
 
         <div class="post-meta">
@@ -2444,693 +2635,6 @@
 
 
     
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/command/serverStatus/MongoDB-serverStatus-output/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/MongoDB/command/serverStatus/MongoDB-serverStatus-output/" itemprop="url">MongoDB serverStatus 输出指标说明</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-06-03T10:43:34+08:00">
-                2020-06-03
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
-                    <span itemprop="name">MongoDB</span>
-                  </a>
-                </span>
-
-                
-                
-                  ， 
-                
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/MongoDB/command/" itemprop="url" rel="index">
-                    <span itemprop="name">command</span>
-                  </a>
-                </span>
-
-                
-                
-                  ， 
-                
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/MongoDB/command/serverStatus/" itemprop="url" rel="index">
-                    <span itemprop="name">serverStatus</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <blockquote>
-<p>MongoDB 4.2 serverStatus指标释义，本文只包含server层指标</p>
-</blockquote>
-<h3 id="实例信息-Instance-Information"><a href="#实例信息-Instance-Information" class="headerlink" title="实例信息 - Instance Information"></a>实例信息 - Instance Information</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">"host" : &lt;string&gt;,</span><br><span class="line">"advisoryHostFQDNs" : &lt;array&gt;,</span><br><span class="line">"version" : &lt;string&gt;,</span><br><span class="line">"process" : &lt;"mongod"|"mongos"&gt;,</span><br><span class="line">"pid" : &lt;num&gt;,</span><br><span class="line">"uptime" : &lt;num&gt;,</span><br><span class="line">"uptimeMillis" : &lt;num&gt;,</span><br><span class="line">"uptimeEstimate" : &lt;num&gt;,</span><br><span class="line">"localTime" : ISODate(""),</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>host : </li>
-<li>advisoryHostFQDNs : </li>
-<li>version : </li>
-<li>process : </li>
-<li>pid : </li>
-<li><strong>uptime :</strong> </li>
-<li>uptimeMillis : </li>
-<li>uptimeEstimate : </li>
-<li>localTime : </li>
-</ul>
-<h3 id="assert"><a href="#assert" class="headerlink" title="* assert"></a>* assert</h3><p>自MongoDB启动以来的断言数</p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">"asserts" : &#123;</span><br><span class="line">   "regular" : &lt;num&gt;,</span><br><span class="line">   "warning" : &lt;num&gt;,</span><br><span class="line">   "msg" : &lt;num&gt;,</span><br><span class="line">   "user" : &lt;num&gt;,</span><br><span class="line">   "rollovers" : &lt;num&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>regular : MongoDB启动以来发生的常规断言数</li>
-<li>warning : 4.0版本以后该值恒为0<ul>
-<li>4.0之前的版本会返回MongoDB启动以来发生warning的次数</li>
-</ul>
-</li>
-<li>msg : MongoDB启动以来引发的消息断言数</li>
-<li>user : MongoDB启动以来引发的用户断言数。这些断言可能是用户行为生成的， 比如磁盘空间不足、duplicate key等，可以通过修复应用程序或者部署问题来解决这些问题</li>
-<li>rollovers : MongoDB启动以来，断言的翻转次数。assert超过2^30，则会置零，rollovers+1</li>
-</ul>
-<h3 id="connections"><a href="#connections" class="headerlink" title="* connections"></a>* connections</h3><p>当前连接数的信息</p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">"connections" : &#123;</span><br><span class="line">   "current" : &lt;num&gt;,</span><br><span class="line">   "available" : &lt;num&gt;,</span><br><span class="line">   "totalCreated" : &lt;num&gt;,</span><br><span class="line">   "active" : &lt;num&gt;,</span><br><span class="line">   "exhaustIsMaster" : &lt;num&gt;,</span><br><span class="line">   "awaitingTopologyChanges" : &lt;num&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li><strong>current : 当前连接数，包含从其他rs节点或者mongos节点发起的链接</strong></li>
-<li><strong>available : 当前未使用的连接数</strong></li>
-<li><strong>totalCreated : MongoDB启动以来，创建的链接总数</strong></li>
-<li><strong>active : [4.0.7] 当前活跃的连接数。活跃链接：链接中有操作正在执行(in progress)</strong></li>
-<li>exhaustIsMaster : [4.4] // TODO 客户端的最后一条请求是包含 <code>exhaustAllowed</code> 的 <code>isMaster</code> 请求数</li>
-<li>awaitingTopologyChanges : [4.4] // TODO 当前在 <code>isMaster</code> 请求中等待拓扑变更的请求数</li>
-</ul>
-<h3 id="defaultRWConcern-4-4-TODO"><a href="#defaultRWConcern-4-4-TODO" class="headerlink" title="defaultRWConcern [4.4] // TODO"></a>defaultRWConcern [4.4] // TODO</h3><p>The <code>defaultRWConcern</code> section provides information on the local copy of the global default read or write concern settings. The data may be stale or out of date. See <a href="https://docs.mongodb.com/master/reference/command/getDefaultRWConcern/#dbcmd.getDefaultRWConcern" target="_blank" rel="noopener"><code>getDefaultRWConcern</code></a> for more information.</p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">"defaultRWConcern" : &#123;</span><br><span class="line">  "defaultReadConcern" : &#123;</span><br><span class="line">    "level" : &lt;string&gt;</span><br><span class="line">  &#125;,</span><br><span class="line">  "defaultWriteConcern" : &#123;</span><br><span class="line">    "w" : &lt;string&gt; | &lt;int&gt;,</span><br><span class="line">    "wtimeout" : &lt;int&gt;,</span><br><span class="line">    "j" : &lt;bool&gt;</span><br><span class="line">  &#125;,</span><br><span class="line">  "updateOpTime" : Timestamp,</span><br><span class="line">  "updateWallClockTime" : Date,</span><br><span class="line">  "localUpdateWallClockTime" : Date</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-
-
-<h3 id="electionMetrics-4-2-1-amp-4-0-13"><a href="#electionMetrics-4-2-1-amp-4-0-13" class="headerlink" title="* electionMetrics [4.2.1 &amp; 4.0.13]"></a>* electionMetrics [4.2.1 &amp; 4.0.13]</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line">"electionMetrics" : &#123;</span><br><span class="line">   "stepUpCmd" : &#123;</span><br><span class="line">      "called" : &lt;NumberLong&gt;,</span><br><span class="line">      "successful" : &lt;NumberLong&gt;</span><br><span class="line">   &#125;,</span><br><span class="line">   "priorityTakeover" : &#123;</span><br><span class="line">      "called" : &lt;NumberLong&gt;,</span><br><span class="line">      "successful" : &lt;NumberLong&gt;</span><br><span class="line">   &#125;,</span><br><span class="line">   "catchUpTakeover" : &#123;</span><br><span class="line">      "called" : &lt;NumberLong&gt;,</span><br><span class="line">      "successful" : &lt;NumberLong&gt;</span><br><span class="line">   &#125;,</span><br><span class="line">   "electionTimeout" : &#123;</span><br><span class="line">      "called" : &lt;NumberLong&gt;,</span><br><span class="line">      "successful" : &lt;NumberLong&gt;</span><br><span class="line">   &#125;,</span><br><span class="line">   "freezeTimeout" : &#123;</span><br><span class="line">      "called" : &lt;NumberLong&gt;,</span><br><span class="line">      "successful" : &lt;NumberLong&gt;</span><br><span class="line">   &#125;,</span><br><span class="line">   "numStepDownsCausedByHigherTerm" : &lt;NumberLong&gt;,</span><br><span class="line">   "numCatchUps" : &lt;NumberLong&gt;,</span><br><span class="line">   "numCatchUpsSucceeded" : &lt;NumberLong&gt;,</span><br><span class="line">   "numCatchUpsAlreadyCaughtUp" : &lt;NumberLong&gt;,</span><br><span class="line">   "numCatchUpsSkipped" : &lt;NumberLong&gt;,</span><br><span class="line">   "numCatchUpsTimedOut" : &lt;NumberLong&gt;,</span><br><span class="line">   "numCatchUpsFailedWithError" :&lt;NumberLong&gt;,</span><br><span class="line">   "numCatchUpsFailedWithNewTerm" : &lt;NumberLong&gt;,</span><br><span class="line">   "numCatchUpsFailedWithReplSetAbortPrimaryCatchUpCmd" : &lt;NumberLong&gt;,</span><br><span class="line">   "averageCatchUpOps" : &lt;double&gt;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>stepUpCmd : primary 卸任(<code>stepDown</code>)时，mongod发起选举交接的次数</li>
-<li>priorityTakeover : mongod实例的 <code>priority</code> 大于 primary 时，发起选举的次数</li>
-<li>catchUpTakeover : mongod实例比 primary 更新时，发起选举的次数 // <a href="https://docs.mongodb.com/master/reference/replica-configuration/#rsconf.settings.catchUpTakeoverDelayMillis" target="_blank" rel="noopener"><code>settings.catchUpTakeoverDelayMillis</code></a></li>
-<li>electionTimeout : mongod实例在指定时间内无法连接 primary 时，发起选举的次数 // <a href="https://docs.mongodb.com/master/reference/replica-configuration/#rsconf.settings.electionTimeoutMillis" target="_blank" rel="noopener"><code>settings.electionTimeoutMillis</code></a></li>
-<li>freezeTimeout : 冻结时间过后，mongod发起的选举次数 // <a href="https://docs.mongodb.com/master/reference/command/replSetFreeze/#dbcmd.replSetFreeze" target="_blank" rel="noopener"><code>freeze period</code></a> </li>
-<li>numStepDownsCausedByHigherTerm : 发现有其他节点任期更高，mongod发生step down的次数</li>
-<li>numCatchUps : 作为新当选的primary，mongod必须追赶最高的oplog的次数</li>
-<li>numCatchUpsSucceeded : 作为新当选的primary，mongod追赶最高oplog成功的次数</li>
-<li>numCatchUpsAlreadyCaughtUp : 作为新当选的primary，选举时已经完成追赶而结束追赶的次数</li>
-<li>numCatchUpsSkipped : 作为新当选的primary，跳过追赶过程的次数</li>
-<li>numCatchUpsTimedOut : 作为新当选的primary，由于时间限制而结束追赶的次数 // <a href="https://docs.mongodb.com/master/reference/replica-configuration/#rsconf.settings.catchUpTimeoutMillis" target="_blank" rel="noopener"><code>settings.catchUpTimeoutMillis</code></a></li>
-<li>numCatchUpsFailedWithError : 作为新当选的primary，由于错误而导致追赶失败的次数</li>
-<li>numCatchUpsFailedWithNewTerm : 作为新当选的primary，由于其他节点有更高任期而导致追赶失败的次数</li>
-<li>numCatchUpsFailedWithReplSetAbortPrimaryCatchUpCmd : 作为新当选的primary，收到 <a href="https://docs.mongodb.com/master/reference/command/replSetAbortPrimaryCatchUp/#dbcmd.replSetAbortPrimaryCatchUp" target="_blank" rel="noopener"><code>replSetAbortPrimaryCatchUp</code></a> 而结束追赶的次数</li>
-<li>averageCatchUpOps : 新当选的primary追赶过程中，平均apply的operation次数</li>
-</ul>
-<h3 id="extra-info"><a href="#extra-info" class="headerlink" title="extra_info"></a>extra_info</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">"extra_info" : &#123;</span><br><span class="line">   "note" : "fields vary by platform.",</span><br><span class="line">   "heap_usage_bytes" : &lt;num&gt;,</span><br><span class="line">   "page_faults" : &lt;num&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>note : 恒为”fields vary by platform.”</li>
-<li>heap_usage_bytes : 占用堆内存的大小</li>
-<li><strong>page_faults : 发生major page_faults的次数</strong></li>
-<li><strong>user_time_us :用户态CPU使用</strong> </li>
-<li><strong>system_time_us :系统CPU使用</strong> </li>
-<li>maximum_resident_set_kb : </li>
-<li>input_blocks : </li>
-<li>output_blocks : </li>
-<li><strong>page_reclaims : 发生minor page_faults的次数</strong></li>
-<li><strong>voluntary_context_switches :发生自愿context switch的次数</strong> </li>
-<li><strong>involuntary_context_switches :发生非自愿context switch的次数</strong> </li>
-</ul>
-<h3 id="flowControl-4-2"><a href="#flowControl-4-2" class="headerlink" title="flowControl [4.2]"></a>flowControl [4.2]</h3><p>流控相关指标</p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">"flowControl" : &#123;</span><br><span class="line">   "enabled" : &lt;boolean&gt;,</span><br><span class="line">   "targetRateLimit" : &lt;int&gt;,</span><br><span class="line">   "timeAcquiringMicros" : &lt;NumberLong&gt;,</span><br><span class="line">   "locksPerKiloOp" : &lt;double&gt;,  // Available in 4.4+. In 4.2, returned locksPerOp instead.</span><br><span class="line">   "sustainerRate" : &lt;int&gt;,</span><br><span class="line">   "isLagged" : &lt;boolean&gt;,</span><br><span class="line">   "isLaggedCount" : &lt;int&gt;,</span><br><span class="line">   "isLaggedTimeMicros" : &lt;NumberLong&gt;,</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li><strong>enabled : 是否开启流控 // <a href="https://docs.mongodb.com/master/reference/parameters/#param.enableFlowControl" target="_blank" rel="noopener"><code>enableFlowControl</code></a></strong></li>
-<li><strong>targetRateLimit : primary节点返回的是每秒最大可以获取ticket的数量。secondary节点返回一个占位符</strong></li>
-<li><strong>timeAcquiringMicros : primary节点返回write操作的总等待时间。secondary节点返回一个占位符</strong></li>
-<li><strong>locksPerKiloOp : [4.4] primary节点每1000操作获取锁的近似值。secondary节点返回一个占位符</strong><ul>
-<li><strong>4.2 版本返回locksPerOp字段，为每个操作获取锁次数，4.4取代了该字段</strong></li>
-</ul>
-</li>
-<li><strong>sustainerRate : primary节点上，返回secondary每秒apply的操作数。secondary节点返回一个占位符</strong></li>
-<li><strong>isLagged : 是否发生流控。当majority committed lag超过指定时间时发生。secondary节点返回一个占位符 // <a href="https://docs.mongodb.com/master/reference/parameters/#param.flowControlTargetLagSeconds" target="_blank" rel="noopener"><code>flowControlTargetLagSeconds</code></a></strong></li>
-<li><strong>isLaggedCount : primary节点返回mongod启动以来发生流控的次数。secondary节点返回一个占位符</strong></li>
-<li><strong>isLaggedTimeMicros : primary节点上返回mongod启动以来发生流控的时间。secondary返回一个占位符</strong></li>
-</ul>
-<h3 id="freeMonitoring-TODO"><a href="#freeMonitoring-TODO" class="headerlink" title="freeMonitoring // TODO"></a>freeMonitoring // TODO</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">"freeMonitoring" : &#123;</span><br><span class="line">   "state" : &lt;string&gt;,</span><br><span class="line">   "retryIntervalSecs" : &lt;NumberLong&gt;,</span><br><span class="line">   "lastRunTime" : &lt;string&gt;,</span><br><span class="line">   "registerErrors" : &lt;NumberLong&gt;,</span><br><span class="line">   "metricsErrors" : &lt;NumberLong&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-
-
-<h3 id="globalLock"><a href="#globalLock" class="headerlink" title="globalLock"></a>globalLock</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">"globalLock" : &#123;</span><br><span class="line">   "totalTime" : &lt;num&gt;,</span><br><span class="line">   "currentQueue" : &#123;</span><br><span class="line">      "total" : &lt;num&gt;,</span><br><span class="line">      "readers" : &lt;num&gt;,</span><br><span class="line">      "writers" : &lt;num&gt;</span><br><span class="line">   &#125;,</span><br><span class="line">   "activeClients" : &#123;</span><br><span class="line">      "total" : &lt;num&gt;,</span><br><span class="line">      "readers" : &lt;num&gt;,</span><br><span class="line">      "writers" : &lt;num&gt;</span><br><span class="line">   &#125;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>totalTime : 自mongod启动并创建 <code>globalLock</code> 的微秒数。大致和服务器uptime相同</li>
-<li><strong>currentQueue.total : 等待锁队列的长度 = <code>currentQueue.readers</code> + <code>currentQueue.writers</code></strong></li>
-<li><strong>currentQueue.readers : 等待读锁队列的长度</strong></li>
-<li><strong>currentQueue.writers : 等待写锁队列的长度</strong></li>
-<li><strong>activeClients.total : 客户连接和内部threads，执行读或者写的总数。可能比 <code>currentQueue.readers</code> + <code>currentQueue.writers</code> 高，因为还包含了内部threads</strong></li>
-<li><strong>activeClients.readers : 客户连接执行读操作的数量</strong></li>
-<li><strong>activeClients.writers : 客户连接执行写操作的数量</strong></li>
-</ul>
-<h3 id="hedgingMetrics-4-4-TODO"><a href="#hedgingMetrics-4-4-TODO" class="headerlink" title="hedgingMetrics [4.4] // TODO"></a>hedgingMetrics [4.4] // TODO</h3><p><em>New in version 4.4:</em> For <a href="https://docs.mongodb.com/master/reference/program/mongos/#bin.mongos" target="_blank" rel="noopener"><code>mongos</code></a> instances only.</p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">"hedgingMetrics" : &#123;</span><br><span class="line">   "numTotalOperations" : &lt;num&gt;,</span><br><span class="line">   "numTotalHedgedOperations" : &lt;num&gt;,</span><br><span class="line">   "numAdvantageouslyHedgedOperations" : &lt;num&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-
-
-<h3 id="latchAnalysis-4-4-TODO"><a href="#latchAnalysis-4-4-TODO" class="headerlink" title="latchAnalysis [4.4] // TODO"></a>latchAnalysis [4.4] // TODO</h3><p><em>New in version 4.4.</em></p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">"latchAnalysis" : &#123;</span><br><span class="line">   &lt;latch name&gt; : &#123;</span><br><span class="line">      "created" : &lt;num&gt;,</span><br><span class="line">      "destroyed" : &lt;num&gt;,</span><br><span class="line">      "acquired" : &lt;num&gt;,</span><br><span class="line">      "released" : &lt;num&gt;,</span><br><span class="line">      "contended" : &lt;num&gt;,</span><br><span class="line">      "hierarchicalAcquisitionLevelViolations" : &#123;</span><br><span class="line">            "onAcquire" : &lt;num&gt;,</span><br><span class="line">            "onRelease" : &lt;num&gt;</span><br><span class="line">      &#125;</span><br><span class="line">   &#125;,</span><br><span class="line">   ...</span><br></pre></td></tr></table></figure>
-
-
-
-<h3 id="logicalSessionRecordCache-3-6"><a href="#logicalSessionRecordCache-3-6" class="headerlink" title="logicalSessionRecordCache [3.6]"></a>logicalSessionRecordCache [3.6]</h3><p>Server session 的一些缓存指标</p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">"logicalSessionRecordCache" : &#123;</span><br><span class="line">   "activeSessionsCount" : &lt;num&gt;,</span><br><span class="line">   "sessionsCollectionJobCount" : &lt;num&gt;,</span><br><span class="line">   "lastSessionsCollectionJobDurationMillis" : &lt;num&gt;,</span><br><span class="line">   "lastSessionsCollectionJobTimestamp" : &lt;Date&gt;,</span><br><span class="line">   "lastSessionsCollectionJobEntriesRefreshed" : &lt;num&gt;,</span><br><span class="line">   "lastSessionsCollectionJobEntriesEnded" : &lt;num&gt;,</span><br><span class="line">   "lastSessionsCollectionJobCursorsClosed" : &lt;num&gt;,</span><br><span class="line">   "transactionReaperJobCount" : &lt;num&gt;,</span><br><span class="line">   "lastTransactionReaperJobDurationMillis" : &lt;num&gt;,</span><br><span class="line">   "lastTransactionReaperJobTimestamp" : &lt;Date&gt;,</span><br><span class="line">   "lastTransactionReaperJobEntriesCleanedUp" : &lt;num&gt;,</span><br><span class="line">   "sessionCatalogSize" : &lt;num&gt;   // Starting in MongoDB 4.2</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li><strong>activeSessionsCount : 上次刷新以来，缓存在内存中的本地活跃session数量</strong></li>
-<li><strong>sessionsCollectionJobCount : session refresh执行次数</strong></li>
-<li><strong>lastSessionsCollectionJobDurationMillis : 上次session refresh执行耗时</strong></li>
-<li>lastSessionsCollectionJobTimestamp : 上次session refresh发生的时间点</li>
-<li><strong>lastSessionsCollectionJobEntriesRefreshed : 上次session refresh期间，刷新的session数量</strong></li>
-<li><strong>lastSessionsCollectionJobEntriesEnded : 上次session refresh期间，结束的session数量</strong></li>
-<li><strong>lastSessionsCollectionJobCursorsClosed : 上次session refresh期间，关闭的cursor数量</strong></li>
-<li><strong>transactionReaperJobCount : transaction reaper执行次数</strong></li>
-<li><strong>lastTransactionReaperJobDurationMillis : 上次transaction reaper执行耗时</strong></li>
-<li>lastTransactionReaperJobTimestamp : 上次transaction reaper发生的时间点</li>
-<li><strong>lastTransactionReaperJobEntriesCleanedUp : 上次transaction reaper清理的entry数量</strong></li>
-<li><strong>sessionCatalogSize : [4.2] 内存中缓存的session数量</strong></li>
-</ul>
-<h3 id="locks"><a href="#locks" class="headerlink" title="locks"></a>locks</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">"locks" : &#123;</span><br><span class="line">   &lt;type&gt; : &#123;</span><br><span class="line">         "acquireCount" : &#123;</span><br><span class="line">            &lt;mode&gt; : NumberLong(&lt;num&gt;),</span><br><span class="line">            ...</span><br><span class="line">         &#125;,</span><br><span class="line">         "acquireWaitCount" : &#123;</span><br><span class="line">            &lt;mode&gt; : NumberLong(&lt;num&gt;),</span><br><span class="line">            ...</span><br><span class="line">         &#125;,</span><br><span class="line">         "timeAcquiringMicros" : &#123;</span><br><span class="line">            &lt;mode&gt; : NumberLong(&lt;num&gt;),</span><br><span class="line">            ...</span><br><span class="line">         &#125;,</span><br><span class="line">         "deadlockCount" : &#123;</span><br><span class="line">            &lt;mode&gt; : NumberLong(&lt;num&gt;),</span><br><span class="line">            ...</span><br><span class="line">         &#125;</span><br><span class="line">   &#125;,</span><br><span class="line">   ...</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li><strong><type> :</strong> <ul>
-<li><strong>ParallelBatchWriterMode : [4.2]</strong></li>
-<li><strong>ReplicationStateTransition : [4.2]</strong></li>
-<li><strong>Global</strong></li>
-<li><strong>Database</strong></li>
-<li><strong>Collection</strong></li>
-<li><strong>Mutex</strong></li>
-<li><strong>Metadata</strong></li>
-<li><strong>oplog</strong></li>
-</ul>
-</li>
-<li><strong><type>.acquireCount : 获取锁的次数</strong></li>
-<li><strong><type>.acquireWaitCount : 由于锁冲突而等待的次数</strong></li>
-<li><strong><type>.timeAcquiringMicros : 锁等待的累积时间</strong></li>
-<li><strong><type>.deadlockCount : 死锁发生的次数</strong></li>
-<li><strong><modes> :</strong> <ul>
-<li><strong>R : Shared (S) lock.</strong></li>
-<li><strong>W : Exclusive (X) lock.</strong></li>
-<li><strong>r : Intent Shared (IS) lock.</strong></li>
-<li><strong>w : Intent Exclusive (IX) lock.</strong></li>
-</ul>
-</li>
-</ul>
-<h3 id="mirroredReads-4-4-TODO"><a href="#mirroredReads-4-4-TODO" class="headerlink" title="mirroredReads [4.4] // TODO"></a>mirroredReads [4.4] // TODO</h3><p><em>Available on mongod only.</em></p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">"mirroredReads" : &#123;</span><br><span class="line">      "seen" : &lt;num&gt;,</span><br><span class="line">      "sent" : &lt;num&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-
-
-<h3 id="network"><a href="#network" class="headerlink" title="network"></a>network</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">"network" : &#123;</span><br><span class="line">   "bytesIn" : &lt;num&gt;,</span><br><span class="line">   "bytesOut" : &lt;num&gt;,</span><br><span class="line">   "physicalBytesIn" : &lt;num&gt;,</span><br><span class="line">	 "physicalBytesOut" : &lt;num&gt;,</span><br><span class="line">   "numSlowDNSOperations" : &lt;num&gt;,</span><br><span class="line">   "numSlowSSLOperations" : &lt;num&gt;,</span><br><span class="line">   "numRequests" : &lt;num&gt;,</span><br><span class="line">   "serviceExecutorTaskStats" : &#123;&#125;,</span><br><span class="line">   "tcpFastOpen" : &#123;</span><br><span class="line">     "kernelSetting" : NumberLong("&lt;num&gt;"),</span><br><span class="line">     "serverSupported" : &lt;bool&gt;,</span><br><span class="line">     "clientSupported" : &lt;bool&gt;,</span><br><span class="line">     "accepted" : "NumberLong(&lt;num&gt;)"</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li><strong>bytesIn : 网络入流量的字节数</strong></li>
-<li><strong>bytesOut : 网络出流量字节数</strong></li>
-<li><strong>physicalBytesIn : 物理网络入流量</strong></li>
-<li><strong>physicalBytesOut : 物理网络出流量</strong></li>
-<li>numSlowDNSOperations : [4.4] DNS解析超过1s的次数</li>
-<li>numSlowSSLOperations : [4.4] SSL handshake超过1s的次数</li>
-<li><strong>numRequests : 接收到的请求次数</strong></li>
-<li>serviceExecutorTaskStats : 打印serviceExecutor信息，默认是 Synchronous，则信息为 <code>{ &quot;executor&quot; : &quot;passthrough&quot;, &quot;threadsRunning&quot; : 2 }</code></li>
-<li>tcpFastOpen :  [4.4]<ul>
-<li>kernelSetting :  [4.4] = /proc/sys/net/ipv4/tcp_fastopen</li>
-<li>serverSupported :  [4.4] 服务器操作系统inbound是否支持tcpFastOpen</li>
-<li>clientSupported :  [4.4] 服务器操作系统outbound是否支持tcpFastOpen</li>
-<li>accepted :  [4.4] mongod实例启动以来 accepted 的tcpFastOpen次数</li>
-</ul>
-</li>
-</ul>
-<h3 id="opLatencies-mongod"><a href="#opLatencies-mongod" class="headerlink" title="opLatencies [mongod]"></a>opLatencies [mongod]</h3><p>请求耗时信息</p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">"opLatencies" : &#123;</span><br><span class="line">   "reads" : &#123;</span><br><span class="line">			"latency" : NumberLong(0),</span><br><span class="line">			"ops" : NumberLong(0)</span><br><span class="line">		&#125;,</span><br><span class="line">   "writes" : &#123;</span><br><span class="line">			"latency" : NumberLong(0),</span><br><span class="line">			"ops" : NumberLong(0)</span><br><span class="line">		&#125;,</span><br><span class="line">   "commands" : &#123;</span><br><span class="line">			"latency" : NumberLong(0),</span><br><span class="line">			"ops" : NumberLong(0)</span><br><span class="line">		&#125;,</span><br><span class="line">   "transactions" : &#123;</span><br><span class="line">			"latency" : NumberLong(0),</span><br><span class="line">			"ops" : NumberLong(0)</span><br><span class="line">		&#125;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<p>输出类似 <code>db.collection.aggregate( [ { $collStats: { latencyStats: { histograms: true } } } ] )</code></p>
-<p><strong>记录读、写、cmd、事务操作的次数和latency</strong></p>
-<ul>
-<li><strong>latency : 操作总耗时</strong></li>
-<li><strong>ops : 操作总执行次数</strong></li>
-<li>histogram : 记录latency的分布信息 // serverStatus中不输出</li>
-</ul>
-<h3 id="opReadConcernCounters-4-0-6-mongod"><a href="#opReadConcernCounters-4-0-6-mongod" class="headerlink" title="opReadConcernCounters [4.0.6] [mongod]"></a>opReadConcernCounters [4.0.6] [mongod]</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">"opReadConcernCounters" : &#123;</span><br><span class="line">   "available" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "linearizable" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "local" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "majority" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "snapshot" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "none" :  NumberLong(&lt;num&gt;) // use default</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>mongod启动以来，query操作中指定的read concern的次数</p>
-<p><strong>available / linearizable / local / majority / snapshot / none</strong></p>
-<h3 id="opWriteConcernCounters-4-0-6-mongod"><a href="#opWriteConcernCounters-4-0-6-mongod" class="headerlink" title="opWriteConcernCounters [4.0.6] [mongod]"></a>opWriteConcernCounters [4.0.6] [mongod]</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line">"opWriteConcernCounters" : &#123;</span><br><span class="line">   "insert" : &#123;</span><br><span class="line">      "wmajority" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "wnum" : &#123;</span><br><span class="line">         "&lt;num&gt;" :  NumberLong(&lt;num&gt;),</span><br><span class="line">         ...</span><br><span class="line">      &#125;,</span><br><span class="line">      "wtag" : &#123;</span><br><span class="line">         "&lt;tag1&gt;" :  NumberLong(&lt;num&gt;),</span><br><span class="line">         ...</span><br><span class="line">      &#125;,</span><br><span class="line">      "none" : NumberLong(&lt;num&gt;)</span><br><span class="line">   &#125;,</span><br><span class="line">   "update" : &#123;</span><br><span class="line">      "wmajority" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "wnum" : &#123;</span><br><span class="line">         "&lt;num&gt;" :  NumberLong(&lt;num&gt;),</span><br><span class="line">      &#125;,</span><br><span class="line">      "wtag" : &#123;</span><br><span class="line">         "&lt;tag1&gt;" :  NumberLong(&lt;num&gt;),</span><br><span class="line">         ...</span><br><span class="line">      &#125;,</span><br><span class="line">      "none" : NumberLong(&lt;num&gt;)</span><br><span class="line">   &#125;,</span><br><span class="line">   "delete" : &#123;</span><br><span class="line">      "wmajority" :  NumberLong(&lt;num&gt;)</span><br><span class="line">      "wnum" : &#123;</span><br><span class="line">         "&lt;num&gt;" :  NumberLong(&lt;num&gt;),</span><br><span class="line">         ...</span><br><span class="line">      &#125;,</span><br><span class="line">      "wtag" : &#123;</span><br><span class="line">         "&lt;tag1&gt;" :  NumberLong(&lt;num&gt;),</span><br><span class="line">         ...</span><br><span class="line">      &#125;,</span><br><span class="line">      "none" : NumberLong(&lt;num&gt;)</span><br><span class="line">   &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>mongod启动以来，write操作中指定的write concern的数量。<code>j</code> 和 <code>wtimeout</code> 参数不会影响计数，即使超时也会进行计数。只有在<a href="https://docs.mongodb.com/master/reference/parameters/#param.reportOpWriteConcernCountersInServerStatus" target="_blank" rel="noopener"><code>reportOpWriteConcernCountersInServerStatus</code></a>设置为true的时候才会打印，默认为false。</p>
-<ul>
-<li><strong>wmajority : 指定 <code>w: majority</code> 的次数</strong></li>
-<li><strong>wnum : 指定 <code>w: &lt;num&gt;</code> 的次数</strong></li>
-<li><strong>wtag : 指定 <code>w: &lt;tag&gt;</code> 的次数</strong></li>
-<li><strong>none : 未指定 <code>w</code> 的次数，这些操作使用默认 <code>w: 1</code></strong></li>
-</ul>
-<h3 id="opcounters"><a href="#opcounters" class="headerlink" title="opcounters"></a>opcounters</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">"opcounters" : &#123;</span><br><span class="line">   "insert" : NumberLong(&lt;num&gt;),  // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">   "query" : NumberLong(&lt;num&gt;),   // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">   "update" : NumberLong(&lt;num&gt;),  // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">   "delete" : NumberLong(&lt;num&gt;),  // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">   "getmore" : NumberLong(&lt;num&gt;), // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">   "command" : NumberLong(&lt;num&gt;), // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<p>记录启动以来各个命令的执行次数</p>
-<p><strong>insert / query / update / delete / getmore / command</strong></p>
-<p>4.2版本开始，这些指标的类型修改为NumberLong，之前版本为NumberInt。</p>
-<h3 id="opcountersRepl"><a href="#opcountersRepl" class="headerlink" title="opcountersRepl"></a>opcountersRepl</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">"opcountersRepl" : &#123;</span><br><span class="line">   "insert" : NumberLong(&lt;num&gt;),  // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">   "query" : NumberLong(&lt;num&gt;),   // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">   "update" : NumberLong(&lt;num&gt;),  // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">   "delete" : NumberLong(&lt;num&gt;),  // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">   "getmore" : NumberLong(&lt;num&gt;), // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">   "command" : NumberLong(&lt;num&gt;), // Starting in MongoDB 4.2, type is NumberLong</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<p>记录启动以来replication操作的次数</p>
-<p><strong>insert / query / update / delete / getmore / command</strong></p>
-<p>4.2版本开始，这些指标的类型修改为NumberLong，之前版本为NumberInt。只有当前实例为<code>replica set</code>的成员的时候才会打印。这些值和 <code>opcounter</code> 中的值可能不同，因为mongod可能序列化了这些操作</p>
-<h3 id="oplogTruncation-4-2-1"><a href="#oplogTruncation-4-2-1" class="headerlink" title="oplogTruncation [4.2.1]"></a>oplogTruncation [4.2.1]</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">"oplogTruncation" : &#123;</span><br><span class="line">   "totalTimeProcessingMicros" : &lt;NumberLong&gt;,</span><br><span class="line">   "processingMethod" : &lt;string&gt;,</span><br><span class="line">   "oplogMinRetentionHours" : &lt;double&gt;</span><br><span class="line">   "totalTimeTruncatingMicros" : &lt;NumberLong&gt;,</span><br><span class="line">   "truncateCount" : &lt;NumberLong&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-
-
-<h3 id="repl"><a href="#repl" class="headerlink" title="repl"></a>repl</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">"repl" : &#123;</span><br><span class="line">   "hosts" : [</span><br><span class="line">         &lt;string&gt;,</span><br><span class="line">         &lt;string&gt;,</span><br><span class="line">         &lt;string&gt;</span><br><span class="line">   ],</span><br><span class="line">   "setName" : &lt;string&gt;,</span><br><span class="line">   "setVersion" : &lt;num&gt;,</span><br><span class="line">   "ismaster" : &lt;boolean&gt;,</span><br><span class="line">   "secondary" : &lt;boolean&gt;,</span><br><span class="line">   "primary" : &lt;hostname&gt;,</span><br><span class="line">   "me" : &lt;hostname&gt;,</span><br><span class="line">   "electionId" : ObjectId(""),</span><br><span class="line">   "rbid" : &lt;num&gt;,</span><br><span class="line">   "replicationProgress" : [</span><br><span class="line">         &#123;</span><br><span class="line">            <span class="attr">"rid"</span> : &lt;ObjectId&gt;,</span><br><span class="line">            "optime" : &#123; ts: &lt;timestamp&gt;, term: &lt;num&gt; &#125;,</span><br><span class="line">            "host" : &lt;hostname&gt;,</span><br><span class="line">            "memberId" : &lt;num&gt;</span><br><span class="line">         &#125;,</span><br><span class="line">        ...</span><br><span class="line">   ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>hosts : 当前 <code>replica set</code> 成员的 <code>host:port</code> 的数组</li>
-<li>setName :  当前 <code>replica set</code> 的name</li>
-<li>setVersion :  // TODO</li>
-<li>ismaster : 当前是否为 primary 节点</li>
-<li>secondary : 当前是否为 secondary 节点</li>
-<li>primary : primary节点的 <code>host:port</code> 信息</li>
-<li>me : 当前节点的 <code>host:port</code> 信息</li>
-<li>electionId :  // TODO </li>
-<li>rbid : rollback标识符，表示当前节点是否发生了rollback</li>
-<li>lastWrite : <ul>
-<li><strong>opTime :</strong> </li>
-<li>lastWriteDate : </li>
-<li><strong>majorityOpTime :</strong> </li>
-<li>majorityWriteDate : </li>
-</ul>
-</li>
-<li>replicationProgress : 一个数组，每个成员是一个向当前节点汇报复制状态的节点。如果要包含这部分信息，需要在 <code>serverStatus</code> 中增加 <code>repl</code> 的option<ul>
-<li>rid : <code>replica set</code>成员使用的ID，仅内部使用</li>
-<li><strong>optime : 该成员汇报的最新apply的oplog的时间</strong></li>
-<li>host : 该成员的 <code>host:port</code> 信息</li>
-<li>memberId : 该成员的整数标识符</li>
-</ul>
-</li>
-</ul>
-<h3 id="security"><a href="#security" class="headerlink" title="security"></a>security</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line">"security" : &#123;</span><br><span class="line">   "authentication" : &#123;</span><br><span class="line">      "mechanisms" : &#123;</span><br><span class="line">         "MONGODB-X509" : &#123;</span><br><span class="line">            "speculativeAuthenticate" : &#123;</span><br><span class="line">               "received" : &lt;num&gt;,</span><br><span class="line">               "successful" : &lt;num&gt;</span><br><span class="line">            &#125;,</span><br><span class="line">            "authenticate" : &#123;</span><br><span class="line">               "received" : &lt;num&gt;,</span><br><span class="line">               "successful" : &lt;num&gt;</span><br><span class="line">            &#125;</span><br><span class="line">         &#125;,</span><br><span class="line">         "SCRAM-SHA-1" : &#123;</span><br><span class="line">            "speculativeAuthenticate" : &#123;</span><br><span class="line">               "received" : &lt;num&gt;,</span><br><span class="line">               "successful" : &lt;num&gt;</span><br><span class="line">            &#125;,</span><br><span class="line">            "authenticate" : &#123;</span><br><span class="line">               "received" : &lt;num&gt;,</span><br><span class="line">               "successful" : &lt;num&gt;</span><br><span class="line">            &#125;</span><br><span class="line">         &#125;,</span><br><span class="line">         "SCRAM-SHA-256" : &#123;</span><br><span class="line">            "speculativeAuthenticate" : &#123;</span><br><span class="line">               "received" : &lt;num&gt;,</span><br><span class="line">               "successful" : &lt;num&gt;</span><br><span class="line">            &#125;,</span><br><span class="line">            "authenticate" : &#123;</span><br><span class="line">               "received" : &lt;num&gt;,</span><br><span class="line">               "successful" : &lt;num&gt;</span><br><span class="line">            &#125;</span><br><span class="line">          &#125;</span><br><span class="line">       &#125;</span><br><span class="line">     &#125;,</span><br><span class="line">     "SSLServerSubjectName": &lt;string&gt;,</span><br><span class="line">     "SSLServerHasCertificateAuthority": &lt;boolean&gt;,</span><br><span class="line">     "SSLServerCertificateExpirationDate": &lt;date&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>// TODO 4.4 new metrics</li>
-<li>SSLServerSubjectName : SSL证书的subject name</li>
-<li>SSLServerHasCertificateAuthority : 与相关机构关联时为true，自签名的为false</li>
-<li>SSLServerCertificateExpirationDate : SSL证书的过期时间</li>
-</ul>
-<h3 id="sharding"><a href="#sharding" class="headerlink" title="sharding"></a>sharding</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">   <span class="attr">"configsvrConnectionString"</span> : <span class="string">"csRS/cfg1.example.net:27019,cfg2.example.net:27019,cfg2.example.net:27019"</span>,</span><br><span class="line">   <span class="attr">"lastSeenConfigServerOpTime"</span> : &#123;</span><br><span class="line">      "ts" : Timestamp(1517462189, 1),</span><br><span class="line">      "t" : NumberLong(1)</span><br><span class="line">   &#125;,</span><br><span class="line">   "maxChunkSizeInBytes" : NumberLong(67108864)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>configsvrConnectionString : config server的连接串</li>
-<li>lastSeenConfigServerOpTime : mongos 或者 shard获取的最新 CSRS 的 optime</li>
-<li>maxChunkSizeInBytes : [3.6] 配置的最大chunk size。非实时</li>
-</ul>
-<p>3.2版本，mongos返回sharding信息。3.6版本，shard返回sharding信息</p>
-<h3 id="shardingStatistics-4-0"><a href="#shardingStatistics-4-0" class="headerlink" title="shardingStatistics [4.0]"></a>shardingStatistics [4.0]</h3><h4 id="run-on-shard"><a href="#run-on-shard" class="headerlink" title="run on shard"></a>run on shard</h4><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line">"shardingStatistics" : &#123;</span><br><span class="line">   "countStaleConfigErrors" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "countDonorMoveChunkStarted" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "totalDonorChunkCloneTimeMillis" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "totalCriticalSectionCommitTimeMillis" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "totalCriticalSectionTimeMillis" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "countDocsClonedOnRecipient" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "countDocsClonedOnDonor" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "countRecipientMoveChunkStarted" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "countDocsDeletedOnDonor" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "countDonorMoveChunkLockTimeout" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "unfinishedMigrationFromPreviousPrimary" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "catalogCache" : &#123;</span><br><span class="line">      "numDatabaseEntries" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "numCollectionEntries" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "countStaleConfigErrors" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "totalRefreshWaitTimeMicros" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "numActiveIncrementalRefreshes" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "countIncrementalRefreshesStarted" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "numActiveFullRefreshes" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "countFullRefreshesStarted" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "countFailedRefreshes" : NumberLong(&lt;num&gt;)</span><br><span class="line">   &#125;,</span><br><span class="line">   "rangeDeleterTasks" : &lt;num&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<h4 id="run-on-mongos"><a href="#run-on-mongos" class="headerlink" title="run on mongos"></a>run on mongos</h4><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">"shardingStatistics" : &#123;</span><br><span class="line">   "catalogCache" : &#123;</span><br><span class="line">      "numDatabaseEntries" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "numCollectionEntries" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "countStaleConfigErrors" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "totalRefreshWaitTimeMicros" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "numActiveIncrementalRefreshes" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "countIncrementalRefreshesStarted" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "numActiveFullRefreshes" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "countFullRefreshesStarted" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "countFailedRefreshes" : NumberLong(&lt;num&gt;),</span><br><span class="line">      "operationsBlockedByRefresh" : &#123;</span><br><span class="line">        "countAllOperations" : NumberLong(&lt;num&gt;),</span><br><span class="line">        "countInserts" : NumberLong(&lt;num&gt;),</span><br><span class="line">        "countQueries" : NumberLong(&lt;num&gt;),</span><br><span class="line">        "countUpdates" : NumberLong(&lt;num&gt;),</span><br><span class="line">        "countDeletes" : NumberLong(&lt;num&gt;),</span><br><span class="line">        "countCommands" : NumberLong(&lt;num&gt;)</span><br><span class="line">      &#125;</span><br><span class="line">   &#125;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li><strong>countStaleConfigErrors : [mongod] 触发 stale config的次数</strong></li>
-<li><strong>countDonorMoveChunkStarted : [mongod] 从当前实例发起 <code>moveChunk</code> 的次数</strong></li>
-<li><strong>totalDonorChunkCloneTimeMillis : [mongod] 从当前实例进行 <code>moveChunk</code> 过程中，clone阶段总耗时</strong></li>
-<li><strong>totalCriticalSectionCommitTimeMillis : [mongod] 从当前实例进行 <code>moveChunk</code> 过程中，更新元数据的总耗时</strong></li>
-<li><strong>totalCriticalSectionTimeMillis : [mongod] 从当前实例进行 <code>moveChunk</code> 过程中，追赶和更新元数据的总耗时</strong><ul>
-<li><strong>追赶阶段耗时 = <code>totalCriticalSectionTimeMillis</code> - <code>totalCriticalSectionCommitTimeMillis</code></strong></li>
-</ul>
-</li>
-<li><strong>countDocsClonedOnRecipient : [mongod4.2] 作为 <code>moveChunk</code> 接收方，clone的document总数</strong></li>
-<li><strong>countDocsClonedOnDonor : [mongod4.2] 作为 <code>moveChunk</code> 发送方，clone的document总数</strong></li>
-<li><strong>countRecipientMoveChunkStarted : [mongod4.2] 作为 <code>moveChunk</code> 接收方，开始接收的次数</strong></li>
-<li><strong>countDocsDeletedOnDonor : [mongod4.2] 作为 <code>moveChunk</code> 发送方，已经删除的document总数</strong></li>
-<li><strong>countDonorMoveChunkLockTimeout : [mongod4.2] 作为 <code>moveChunk</code> 发送方，因获取锁超时而中断的次数</strong></li>
-<li><strong>unfinishedMigrationFromPreviousPrimary : [mongod4.4] 因为选主导致migration未完成的次数，只有选主完成才会更新</strong></li>
-<li><strong>rangeDeleterTasks : [mongod4.4] migration之后准备range delete的任务总数</strong></li>
-<li><strong>catalogCache :</strong> <ul>
-<li>numDatabaseEntries : catalog cache中 database entry的数量</li>
-<li>numCollectionEntries : catalog cache中 collection entry的数量</li>
-<li><strong>countStaleConfigErrors : 触发 stale config的次数</strong></li>
-<li><strong>totalRefreshWaitTimeMicros : 刷新metadata的等待总耗时</strong></li>
-<li><strong>numActiveIncrementalRefreshes : 目前等待增量catalog cache刷新完成的数量</strong></li>
-<li><strong>countIncrementalRefreshesStarted : 增量catalog cache开始刷新的次数</strong></li>
-<li><strong>numActiveFullRefreshes : 目前等待全量catalog cache刷新完成的数量</strong></li>
-<li><strong>countFullRefreshesStarted : 全量catalog cache开始刷新的次数</strong></li>
-<li><strong>countFailedRefreshes : 增量或全量catalog cache刷新失败的次数</strong></li>
-<li><strong>operationsBlockedByRefresh : [mongos 4.2.7] catalog cache刷新导致阻塞的operation总数</strong></li>
-</ul>
-</li>
-</ul>
-<h3 id="shardedIndexConsistency-4-2-6-amp-4-4-config"><a href="#shardedIndexConsistency-4-2-6-amp-4-4-config" class="headerlink" title="shardedIndexConsistency [4.2.6 &amp; 4.4] [config]"></a>shardedIndexConsistency [4.2.6 &amp; 4.4] [config]</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">"shardedIndexConsistency" : &#123;</span><br><span class="line">   "numShardedCollectionsWithInconsistentIndexes" : &lt;NumberLong&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li><strong>numShardedCollectionsWithInconsistentIndexes : 分片中索引不一致的分片集合数</strong><ul>
-<li><a href="https://docs.mongodb.com/master/reference/parameters/#param.enableShardedIndexConsistencyCheck" target="_blank" rel="noopener"><code>enableShardedIndexConsistencyCheck</code></a></li>
-<li><a href="https://docs.mongodb.com/master/reference/parameters/#param.shardedIndexConsistencyCheckIntervalMS" target="_blank" rel="noopener"><code>shardedIndexConsistencyCheckIntervalMS</code></a></li>
-</ul>
-</li>
-</ul>
-<h3 id="storageEngine"><a href="#storageEngine" class="headerlink" title="storageEngine"></a>storageEngine</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">"storageEngine" : &#123;</span><br><span class="line">   "name" : &lt;string&gt;,</span><br><span class="line">   "supportsCommittedReads" : &lt;boolean&gt;,</span><br><span class="line">   "oldestRequiredTimestampForCrashRecovery" : Timestamp(0, 0),</span><br><span class="line">   "supportsPendingDrops" : true,</span><br><span class="line">   "dropPendingIdents" : NumberLong(0),</span><br><span class="line">   "supportsSnapshotReadConcern" : true,</span><br><span class="line">   "readOnly" : false,</span><br><span class="line">   "persistent" : &lt;boolean&gt;</span><br><span class="line">   "backupCursorOpen" : false</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>name : 当前存储引擎的名称</li>
-<li>supportsCommittedReads : [3.2] 当前存储引擎是否支持 <code>majority read concern</code></li>
-<li>persistent : [3.2.6] 是否支持持久化到磁盘</li>
-</ul>
-<h3 id="transactions"><a href="#transactions" class="headerlink" title="transactions"></a>transactions</h3><h4 id="run-on-mongod-3-6-3"><a href="#run-on-mongod-3-6-3" class="headerlink" title="run on mongod [3.6.3]"></a>run on mongod [3.6.3]</h4><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">"transactions" : &#123;</span><br><span class="line">   "retriedCommandsCount" : &lt;NumberLong&gt;,</span><br><span class="line">   "retriedStatementsCount" : &lt;NumberLong&gt;,</span><br><span class="line">   "transactionsCollectionWriteCount" : &lt;NumberLong&gt;,</span><br><span class="line">   "currentActive" : &lt;NumberLong&gt;,</span><br><span class="line">   "currentInactive" : &lt;NumberLong&gt;,</span><br><span class="line">   "currentOpen" : &lt;NumberLong&gt;,</span><br><span class="line">   "totalAborted" : &lt;NumberLong&gt;,</span><br><span class="line">   "totalCommitted" : &lt;NumberLong&gt;,</span><br><span class="line">   "totalStarted" : &lt;NumberLong&gt;,</span><br><span class="line">   "totalPrepared" : &lt;NumberLong&gt;,</span><br><span class="line">   "totalPreparedThenCommitted" : &lt;NumberLong&gt;,</span><br><span class="line">   "totalPreparedThenAborted" :  &lt;NumberLong&gt;,</span><br><span class="line">   "currentPrepared" :  &lt;NumberLong&gt;,</span><br><span class="line">   "lastCommittedTransaction" : &lt;document&gt; // Starting in 4.2.2 (and 4.0.9)</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<h4 id="run-on-mongos-4-2"><a href="#run-on-mongos-4-2" class="headerlink" title="run on mongos [4.2]"></a>run on mongos [4.2]</h4><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br></pre></td><td class="code"><pre><span class="line">   "currentOpen" : &lt;NumberLong&gt;,     // Starting in 4.2.1</span><br><span class="line">   "currentActive" : &lt;NumberLong&gt;,   // Starting in 4.2.1</span><br><span class="line">   "currentInactive" : &lt;NumberLong&gt;, // Starting in 4.2.1</span><br><span class="line">   "totalStarted" : &lt;NumberLong&gt;,</span><br><span class="line">   "totalCommitted" : &lt;NumberLong&gt;,</span><br><span class="line">   "totalAborted" : &lt;NumberLong&gt;,</span><br><span class="line">   "abortCause" : &#123;</span><br><span class="line">      &lt;String1&gt; : &lt;NumberLong&gt;,</span><br><span class="line">      &lt;String2&gt;" : &lt;NumberLong&gt;,</span><br><span class="line">      ...</span><br><span class="line">   &#125;,</span><br><span class="line">   "totalContactedParticipants" : &lt;NumberLong&gt;,</span><br><span class="line">   "totalParticipantsAtCommit" : &lt;NumberLong&gt;,</span><br><span class="line">   "totalRequestsTargeted" : &lt;NumberLong&gt;,</span><br><span class="line">   "commitTypes" : &#123;</span><br><span class="line">      "noShards" : &#123;</span><br><span class="line">         "initiated" : &lt;NumberLong&gt;,</span><br><span class="line">         "successful" : &lt;NumberLong&gt;,</span><br><span class="line">         "successfulDurationMicros" : &lt;NumberLong&gt;,</span><br><span class="line">      &#125;,</span><br><span class="line">      "singleShard" : &#123;</span><br><span class="line">         "initiated" : &lt;NumberLong&gt;,</span><br><span class="line">         "successful" : &lt;NumberLong&gt;,</span><br><span class="line">         "successfulDurationMicros" : &lt;NumberLong&gt;,</span><br><span class="line">      &#125;,</span><br><span class="line">      "singleWriteShard" : &#123;</span><br><span class="line">         "initiated" : &lt;NumberLong&gt;,</span><br><span class="line">         "successful" : &lt;NumberLong&gt;,</span><br><span class="line">         "successfulDurationMicros" : &lt;NumberLong&gt;,</span><br><span class="line">      &#125;,</span><br><span class="line">      "readOnly" : &#123;</span><br><span class="line">         "initiated" : &lt;NumberLong&gt;,</span><br><span class="line">         "successful" : &lt;NumberLong&gt;,</span><br><span class="line">         "successfulDurationMicros" : &lt;NumberLong&gt;,</span><br><span class="line">      &#125;,</span><br><span class="line">      "twoPhaseCommit" : &#123;</span><br><span class="line">         "initiated" : &lt;NumberLong&gt;,</span><br><span class="line">         "successful" : &lt;NumberLong&gt;,</span><br><span class="line">         "successfulDurationMicros" :&lt;NumberLong&gt;,</span><br><span class="line">      &#125;,</span><br><span class="line">      "recoverWithToken" : &#123;</span><br><span class="line">         "initiated" : &lt;NumberLong&gt;,</span><br><span class="line">         "successful" : &lt;NumberLong&gt;,</span><br><span class="line">         "successfulDurationMicros" : &lt;NumberLong&gt;,</span><br><span class="line">      &#125;</span><br><span class="line">   &#125;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li><strong>retriedCommandsCount : [mongod3.6.3] 在可重入写操作提交后，总的重试次数</strong></li>
-<li><strong>retriedStatementsCount : [mongod3.6.3] retriedCommandsCount中涉及的statment总数</strong></li>
-<li><strong>transactionsCollectionWriteCount : [mongod3.6.3] 当可重入写操作提交后，触发写入config.transaction次数</strong></li>
-<li><strong>currentActive : [mongod4.0.2 &amp; mongos4.2.1] 当前活跃的transaction数</strong></li>
-<li><strong>currentInactive : [mongod4.0.2 &amp; mongos4.2.1] 当前不活跃的事务数</strong></li>
-<li><strong>currentOpen : [mongod4.0.2 &amp; mongos4.2.1] 当前open的事务数</strong></li>
-<li><strong>currentPrepared : [mongod4.2] 当前prepare的事务数</strong></li>
-<li><strong>totalPrepared : [mongod4.2] 启动以来prepare的事务数</strong></li>
-<li><strong>totalPreparedThenCommitted : [mongod4.2] 启动以来prepare然后commit的事务数</strong></li>
-<li><strong>totalPreparedThenAborted : [mongod4.2] 启动以来prepare然后abort的事务数</strong></li>
-<li><strong>totalStarted : [mongod4.0.2 &amp; mongos4.2] 启动以来总的start的事务数</strong></li>
-<li><strong>totalCommitted : [mongod4.0.2 &amp; mongos4.2] 启动以来总的commit事务数</strong></li>
-<li><strong>totalAborted : [mongod4.0.2 &amp; mongos4.2] 启动以来总的abort事务数</strong></li>
-<li><strong>abortCause : [mongos4.2] abort的原因及数量。abort / DuplicateKey / StaleConfig / SnapshotTooOld 等</strong></li>
-<li>lastCommittedTransaction : [mongod4.2.2 &amp; 4.0.9] primary节点汇报上次commit事务的信息，secondary节点汇报曾经是primary时上次提交的信息<ul>
-<li>operationCount : 事务中的写操作数</li>
-<li>oplogOperationBytes : 事务相应oplog大小</li>
-<li>writeConcern : 事务的write concern</li>
-</ul>
-</li>
-<li><strong>totalContactedParticipants ：[mongos4.2] 启动以来因事务联系的shard总数</strong></li>
-<li><strong>totalParticipantsAtCommit ： [mongos4.2] 启动以来事务提交涉及的shard总数</strong></li>
-<li><strong>totalRequestsTargeted ： [mongos4.2] 启动以来mongos发起的事务请求总数</strong></li>
-<li><strong>commitTypes ： [mongos4.2] 提交类型</strong><ul>
-<li><strong><type></strong><ul>
-<li><strong>noShards : commit不需要联系任何shard</strong></li>
-<li><strong>singleShard : commit只影响单个shard</strong></li>
-<li><strong>singleWriteShard : commit影响多个shard，但是写操作只影响一个shard</strong></li>
-<li><strong>readOnly : 只读事务</strong></li>
-<li><strong>twoPhaseCommit : commit包含多个shard的写入操作</strong></li>
-<li><strong>recoverWithToken : 在另一个实例或者当前实例重启后恢复的提交的事务数</strong></li>
-</ul>
-</li>
-<li><strong><metric></strong><ul>
-<li><strong>initiated : 发起该类commit的总数</strong></li>
-<li><strong>successful : 该类commit成功的总数</strong></li>
-<li><strong>successfulDurationMicros : 该类commit成功提交的总耗时</strong></li>
-</ul>
-</li>
-</ul>
-</li>
-</ul>
-<h3 id="transportSecurity-4-0-2-amp-3-6-7-amp-3-4-17"><a href="#transportSecurity-4-0-2-amp-3-6-7-amp-3-4-17" class="headerlink" title="transportSecurity [4.0.2 &amp; 3.6.7+ &amp; 3.4.17+]"></a>transportSecurity [4.0.2 &amp; 3.6.7+ &amp; 3.4.17+]</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">"transportSecurity" : &#123;</span><br><span class="line">   "1.0" : &lt;NumberLong&gt;,</span><br><span class="line">   "1.1" : &lt;NumberLong&gt;,</span><br><span class="line">   "1.2" : &lt;NumberLong&gt;,</span><br><span class="line">   "1.3" : &lt;NumberLong&gt;,</span><br><span class="line">   "unknown" :&lt;NumberLong&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<p>mongod启动以来，使用对应TLS版本的连接数</p>
-<h3 id="writeBacksQueued-TODO"><a href="#writeBacksQueued-TODO" class="headerlink" title="writeBacksQueued // TODO"></a>writeBacksQueued // TODO</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">"writeBacksQueued" : &lt;boolean&gt;,</span><br></pre></td></tr></table></figure>
-
-
-
-<h3 id="mem"><a href="#mem" class="headerlink" title="mem"></a>mem</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">"mem" : &#123;</span><br><span class="line">   "bits" : &lt;int&gt;,</span><br><span class="line">   "resident" : &lt;int&gt;,</span><br><span class="line">   "virtual" : &lt;int&gt;,</span><br><span class="line">   "supported" : &lt;boolean&gt;,</span><br><span class="line">   "mapped" : &lt;int&gt;,</span><br><span class="line">   "mappedWithJournal" : &lt;int&gt;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>bits : <code>64</code> or <code>32</code> , 标识实例是被64位还是32位编译的</li>
-<li><strong>resident : resident memory, MB</strong></li>
-<li><strong>virtual : virtual memory, MB</strong></li>
-<li>supported : 标识是否支持扩展内存信息</li>
-<li>mapped : supported = false时的补充说明信息</li>
-<li>mappedWithJournal : </li>
-</ul>
-<h3 id="metrics"><a href="#metrics" class="headerlink" title="metrics"></a>metrics</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br></pre></td><td class="code"><pre><span class="line">"metrics" : &#123;</span><br><span class="line">   "aggStageCounters" : &#123;</span><br><span class="line">         "&lt;aggregation stage&gt;" : &lt;num&gt;</span><br><span class="line">         &#125;</span><br><span class="line">   &#125;,</span><br><span class="line">   "commands": &#123;</span><br><span class="line">         "&lt;command&gt;": &#123;</span><br><span class="line">            "failed": &lt;num&gt;,</span><br><span class="line">            "total": &lt;num&gt;</span><br><span class="line">         &#125;</span><br><span class="line">   &#125;,</span><br><span class="line">   "cursor" : &#123;</span><br><span class="line">         "timedOut" : NumberLong(&lt;num&gt;),</span><br><span class="line">         "open" : &#123;</span><br><span class="line">            "noTimeout" : NumberLong(&lt;num&gt;),</span><br><span class="line">            "pinned" : NumberLong(&lt;num&gt;),</span><br><span class="line">            "multiTarget" : NumberLong(&lt;num&gt;),</span><br><span class="line">            "singleTarget" : NumberLong(&lt;num&gt;),</span><br><span class="line">            "total" : NumberLong(&lt;num&gt;),</span><br><span class="line">         &#125;</span><br><span class="line">   &#125;,</span><br><span class="line">   "document" : &#123;</span><br><span class="line">         "deleted" : NumberLong(&lt;num&gt;),</span><br><span class="line">         "inserted" : NumberLong(&lt;num&gt;),</span><br><span class="line">         "returned" : NumberLong(&lt;num&gt;),</span><br><span class="line">         "updated" : NumberLong(&lt;num&gt;)</span><br><span class="line">   &#125;,</span><br><span class="line">   "getLastError" : &#123;</span><br><span class="line">         "wtime" : &#123;</span><br><span class="line">            "num" : &lt;num&gt;,</span><br><span class="line">            "totalMillis" : &lt;num&gt;</span><br><span class="line">         &#125;,</span><br><span class="line">         "wtimeouts" : NumberLong(&lt;num&gt;),</span><br><span class="line">         "default" : &#123;</span><br><span class="line">             "unsatisfiable" : &lt;num&gt;</span><br><span class="line">             "wtimeouts" : &lt;num&gt;</span><br><span class="line">         &#125;</span><br><span class="line">   &#125;,</span><br><span class="line">   "operation" : &#123;</span><br><span class="line">         "scanAndOrder" : NumberLong(&lt;num&gt;),</span><br><span class="line">         "writeConflicts" : NumberLong(&lt;num&gt;)</span><br><span class="line">   &#125;,</span><br><span class="line">   "queryExecutor": &#123;</span><br><span class="line">         "scanned" : NumberLong(&lt;num&gt;),</span><br><span class="line">         "scannedObjects" : NumberLong(&lt;num&gt;)</span><br><span class="line">   &#125;,</span><br><span class="line">   "record" : &#123;</span><br><span class="line">         "moves" : NumberLong(&lt;num&gt;)</span><br><span class="line">   &#125;,</span><br><span class="line">   "repl" : &#123;</span><br><span class="line">      "executor" : &#123;</span><br><span class="line">         "pool" : &#123;</span><br><span class="line">            "inProgressCount" : &lt;num&gt;</span><br><span class="line">         &#125;,</span><br><span class="line">         "queues" : &#123;</span><br><span class="line">            "networkInProgress" : &lt;num&gt;,</span><br><span class="line">            "sleepers" : &lt;num&gt;</span><br><span class="line">         &#125;,</span><br><span class="line">         "unsignaledEvents" : &lt;num&gt;,</span><br><span class="line">         "shuttingDown" : &lt;boolean&gt;,</span><br><span class="line">         "networkInterface" : &lt;string&gt;</span><br><span class="line">      &#125;,</span><br><span class="line">      "apply" : &#123;</span><br><span class="line">         "attemptsToBecomeSecondary" : &lt;NumberLong&gt;,</span><br><span class="line">         "batches" : &#123;</span><br><span class="line">            "num" : &lt;num&gt;,</span><br><span class="line">            "totalMillis" : &lt;num&gt;</span><br><span class="line">         &#125;,</span><br><span class="line">         "ops" : &lt;NumberLong&gt;</span><br><span class="line">      &#125;,</span><br><span class="line">      "buffer" : &#123;</span><br><span class="line">         "count" : &lt;NumberLong&gt;,</span><br><span class="line">         "maxSizeBytes" : &lt;NumberLong&gt;,</span><br><span class="line">         "sizeBytes" : &lt;NumberLong&gt;</span><br><span class="line">      &#125;,</span><br><span class="line">      "initialSync" : &#123;</span><br><span class="line">         "completed" : &lt;NumberLong&gt;,</span><br><span class="line">         "failedAttempts" : &lt;NumberLong&gt;,</span><br><span class="line">         "failures" : &lt;NumberLong&gt;,</span><br><span class="line">      &#125;,</span><br><span class="line">      "network" : &#123;</span><br><span class="line">         "bytes" : &lt;NumberLong&gt;,</span><br><span class="line">         "getmores" : &#123;</span><br><span class="line">            "num" : &lt;num&gt;,</span><br><span class="line">            "totalMillis" : &lt;num&gt;</span><br><span class="line">         &#125;,</span><br><span class="line">         "notMasterLegacyUnacknowledgedWrites" : &lt;NumberLong&gt;,</span><br><span class="line">         "notMasterUnacknowledgedWrites" : &lt;NumberLong&gt;,</span><br><span class="line">         "ops" : &lt;NumberLong&gt;,</span><br><span class="line">         "readersCreated" : &lt;NumberLong&gt;,</span><br><span class="line">         "replSetUpdatePosition" : &#123;</span><br><span class="line">             "num" : &lt;NumberLong&gt;</span><br><span class="line">         &#125;</span><br><span class="line">      &#125;,</span><br><span class="line">      "stepDown" : &#123;</span><br><span class="line">         "userOperationsKilled" : &lt;NumberLong&gt;,</span><br><span class="line">         "userOperationsRunning" : &lt;NumberLong&gt;</span><br><span class="line">      &#125;,</span><br><span class="line">      "syncSource" : &#123;</span><br><span class="line">         "numSelections" : &lt;NumberLong&gt;,</span><br><span class="line">         "numTimesChoseSame" : &lt;NumberLong&gt;,</span><br><span class="line">         "numTimesChoseDifferent" : &lt;NumberLong&gt;,</span><br><span class="line">         "numTimesCouldNotFind" : &lt;NumberLong&gt;</span><br><span class="line">      &#125;</span><br><span class="line">   &#125;,</span><br><span class="line">   "storage" : &#123;</span><br><span class="line">         "freelist" : &#123;</span><br><span class="line">            "search" : &#123;</span><br><span class="line">               "bucketExhausted" : &lt;num&gt;,</span><br><span class="line">               "requests" : &lt;num&gt;,</span><br><span class="line">               "scanned" : &lt;num&gt;</span><br><span class="line">            &#125;</span><br><span class="line">         &#125;</span><br><span class="line">   &#125;,</span><br><span class="line">   "ttl" : &#123;</span><br><span class="line">         "deletedDocuments" : NumberLong(&lt;num&gt;),</span><br><span class="line">         "passes" : NumberLong(&lt;num&gt;)</span><br><span class="line">   &#125;</span><br><span class="line">&#125;,</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>aggStageCounters : [4.4 &amp; 4.2.6 &amp; 4.0.19] 使用 <code>aggregation pipeline stage</code> 各个stage的执行次数</li>
-<li><strong>commands :</strong></li>
-<li><strong><command>.failed : 启动以来<command> fail次数</strong><ul>
-<li><strong><command>.total : 启动以来<command> 执行次数</strong></li>
-</ul>
-</li>
-<li>cursor : <ul>
-<li><strong>timedOut : cursor因timeout关闭的数量</strong><ul>
-<li><strong>open.noTimeout : open cursor中设置了 <code>noTimeOut</code>的数量</strong></li>
-<li><strong>open.pinned : open cursor中 pinned的数量</strong></li>
-<li><strong>open.multiTarget : [mongos] 仅指向到一个shard的cursor数量</strong></li>
-<li><strong>open.singleTarget : [mongos] 指向到多余1个shard的cursor数量</strong></li>
-<li><strong>open.total : 维护的open cursor总数</strong></li>
-</ul>
-</li>
-</ul>
-</li>
-<li><strong>document : 文档访问或者修改的数量。[deleted / inserted / returned / updated]</strong></li>
-<li>getLastError : <ul>
-<li>wtime.num : <code>getLastError</code>操作 w &gt; 1 的次数</li>
-<li>wtime.totalMillis : <code>getLastError</code>操作 w &gt; 1 的时间</li>
-<li>wtimeouts : <code>getLastError</code> 触发 <code>wtimeout</code>的次数</li>
-<li>default : <ul>
-<li>unsatisfiable : 返回unsatisfiable的次数</li>
-<li>wtimeouts : 返回wtimeouts的次数</li>
-</ul>
-</li>
-</ul>
-</li>
-<li>operation : <ul>
-<li><strong>scanAndOrder : 无法使用index进行sort的请求数</strong></li>
-<li><strong>writeConflicts : 发生write conflict的次数</strong><ul>
-<li>queryExecutor ：</li>
-<li><strong>scanned : 查询和查询计划中评估扫描索引项的数量， = <code>explain().totalKeysExamined</code></strong></li>
-<li><strong>scannedObjects : 查询和查询计划中评估扫描document的数量， = <code>explain().totalDocsExamined</code></strong></li>
-</ul>
-</li>
-</ul>
-</li>
-<li>query</li>
-</ul>
-<ul>
-<li><ul>
-<li><strong>planCacheTotalSizeEstimateBytes : plan cache占用内存量</strong></li>
-</ul>
-</li>
-<li><ul>
-<li><strong>updateOneOpStyleBroadcastWithExactIDCount : update请求的{multi:false} ， 但是需要broadcast去获取匹配的_id信息</strong></li>
-</ul>
-</li>
-<li><p>repl : </p>
-<ul>
-<li>executor : ReplicationCoordinator使用的TaskExecutor的信息<ul>
-<li>pool.inProgressCount : 执行队列长度</li>
-<li>queues.networkInProgress : 等待网络线程返回结果队列长度</li>
-<li>queues.sleepers : sleep队列长度</li>
-<li>unsignaledEvents : 阻塞时间列表</li>
-<li>shuttingDown : 是否shutdown</li>
-<li>networkInterface : 简单说明 // DEPRECATED: getDiagnosticString is deprecated in NetworkInterfaceTL</li>
-</ul>
-</li>
-<li>apply : 记录从replication中apply的oplog信息<ul>
-<li><strong>batchSize : [4.0.6 &amp; 3.6.11] 启动以来apply的oplog总数，一批apply以后会增加批的总操作数</strong></li>
-<li>attemptsToBecomeSecondary : </li>
-<li><strong>batches.num : 接收的batch数</strong></li>
-<li><strong>batches.totalMillis : apply oplog花费的总时间</strong></li>
-<li><strong>ops : 启动以来apply的oplog总数，每次apply都会增加</strong></li>
-</ul>
-</li>
-<li>buffer : <ul>
-<li><strong>count : oplog buffer中operation的数量</strong></li>
-<li>maxSizeBytes : oplog buffer的最大值</li>
-<li>sizeBytes : 当前oplog buffer的大小</li>
-</ul>
-</li>
-<li>initialSync : <ul>
-<li><strong>completed : initialSync成功的次数</strong></li>
-<li><strong>failedAttempts : initialSync 失败重试的次数</strong></li>
-<li><strong>failures : initialSync 最终失败的次数</strong></li>
-</ul>
-</li>
-<li>network : <ul>
-<li><strong>bytes : 从复制源读取到的数据总数</strong></li>
-<li><strong>getmores.num : 从复制源请求其他操作集合的getMore总数</strong></li>
-<li><strong>getmores.totalMillis : getMore总耗时</strong></li>
-<li>getmores.numEmptyBatches : [4.4] getMore从复制源获取到空oplog的总数</li>
-<li>notMasterLegacyUnacknowledgedWrites : [4.2] 由于当前节点未进入primary状态，导致未确认的legacy写操作失败数</li>
-<li>notMasterUnacknowledgedWrites : [4.2] 由于当前节点未进入primary状态，导致未确认的写操作失败数</li>
-<li><strong>ops : 从复制源读取到的总ops数</strong></li>
-<li>readersCreated : 创建oplog查询进程总数。当链接发生错误时会进行创建，修改数据源也会进行创建</li>
-<li>replSetUpdatePosition.num : [4.4] 发送给复制源 <code>replSetUpdatePosition</code> 数量</li>
-</ul>
-</li>
-<li>stepDown : [4.2] <ul>
-<li><strong>userOperationsKilled : [4.2] stepDown时kill的用户操作数</strong></li>
-<li><strong>userOperationsRunning : [4.2] stepDown时仍然保留的用户操作数</strong></li>
-</ul>
-</li>
-<li>syncSource : [4.4]<ul>
-<li><strong>numSelections : [4.4] 节点重新从可用复制源选择复制源的总数</strong></li>
-<li><strong>numTimesChoseSame : [4.4] 重新评估复制源时仍然选择相同复制源的次数</strong></li>
-<li><strong>numTimesChoseDifferent : [4.4]  重新评估复制源时仍然选择不同复制源的次数</strong></li>
-<li><strong>numTimesCouldNotFind : [4.4] 尝试选择同步源却无法找到的次数</strong></li>
-</ul>
-</li>
-</ul>
-</li>
-<li><p>storage : </p>
-<ul>
-<li>freelist.search.bucketExhausted : 从freelist中查找未找到适合大小的空间次数</li>
-<li>freelist.search.requests : 搜索可用空间次数</li>
-<li>freelist.search.scanned : 搜索到可用空间次数</li>
-</ul>
-<ul>
-<li><p>ttl : </p>
-<ul>
-<li><strong>deletedDocuments : ttl索引删除的文档数</strong></li>
-<li><strong>passes : 后台ttl线程进行删除的次数</strong></li>
-</ul>
-</li>
-</ul>
-</li>
-</ul>
-<h3 id="watchdog-3-6-TODO"><a href="#watchdog-3-6-TODO" class="headerlink" title="watchdog [3.6] // TODO"></a>watchdog [3.6] // TODO</h3><figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">"watchdog" : &#123;</span><br><span class="line">   "checkGeneration" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "monitorGeneration" : NumberLong(&lt;num&gt;),</span><br><span class="line">   "monitorPeriod" : &lt;num&gt;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-
-
-<h3 id="tcmalloc"><a href="#tcmalloc" class="headerlink" title="tcmalloc"></a>tcmalloc</h3><p>记录tcmalloc占用的内存指标，方便内存分析。</p>
-<ul>
-<li><p><strong>pageheap_free_bytes : heap中空闲的内存</strong></p>
-</li>
-<li><p><strong>total_free_bytes = = <code>central_cache_free_bytes + transfer_cache_free_bytes + thread_cache_free_bytes</code> , 不包括pageheap_free_bytes</strong></p>
-</li>
-<li><p><strong>central_cache_free_bytes</strong></p>
-</li>
-<li><p><strong>transfer_cache_free_bytes</strong></p>
-</li>
-<li><p><strong>thread_cache_free_bytes</strong></p>
-</li>
-</ul>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
   </section>
 
   
@@ -3181,7 +2685,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">21</span>
+                  <span class="site-state-item-count">22</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -3192,7 +2696,7 @@
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">19</span>
+                  <span class="site-state-item-count">21</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>

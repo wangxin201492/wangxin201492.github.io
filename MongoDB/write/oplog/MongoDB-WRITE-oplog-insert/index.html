@@ -79,14 +79,14 @@
 
 
 
-<meta name="description" content="准备阶段autoSplit shard&amp;config 节点，会有 PeriodicBalancerConfigRefresher 定时任务每隔 30s 进行 balancer&amp;split 配置刷新 mongos 节点，会有 Uptime-reporter 线程每隔 10s 进行 balancer&amp;split 配置刷新   每当有插入或者更新操作时，会触发 ShardServ">
+<meta name="description" content="[TOC] Oplog写入的相关组件OpObserver1234567&#x2F;** * The OpObserver interface contains methods that get called on certain database events. It provides * a way for various server subsystems to be notified of other">
 <meta property="og:type" content="article">
-<meta property="og:title" content="MongoDB Sharding splitChunk实现流程">
-<meta property="og:url" content="https://wangxin201492.github.io/MongoDB/sharding/splitChunk/MongoDB-sharding-splitChunk/index.html">
+<meta property="og:title" content="Oplog 是如何写入的？">
+<meta property="og:url" content="https://wangxin201492.github.io/MongoDB/write/oplog/MongoDB-WRITE-oplog-insert/index.html">
 <meta property="og:site_name" content="wangxin201492">
-<meta property="og:description" content="准备阶段autoSplit shard&amp;config 节点，会有 PeriodicBalancerConfigRefresher 定时任务每隔 30s 进行 balancer&amp;split 配置刷新 mongos 节点，会有 Uptime-reporter 线程每隔 10s 进行 balancer&amp;split 配置刷新   每当有插入或者更新操作时，会触发 ShardServ">
-<meta property="article:published_time" content="2020-09-02T08:43:32.000Z">
-<meta property="article:modified_time" content="2021-04-30T06:29:52.362Z">
+<meta property="og:description" content="[TOC] Oplog写入的相关组件OpObserver1234567&#x2F;** * The OpObserver interface contains methods that get called on certain database events. It provides * a way for various server subsystems to be notified of other">
+<meta property="article:published_time" content="2021-06-04T02:09:10.000Z">
+<meta property="article:modified_time" content="2021-06-04T02:10:36.660Z">
 <meta property="article:author" content="wangxin201492">
 <meta property="article:tag" content="MongoDB-OTT">
 <meta name="twitter:card" content="summary">
@@ -119,13 +119,13 @@
 
 
 
-  <link rel="canonical" href="https://wangxin201492.github.io/MongoDB/sharding/splitChunk/MongoDB-sharding-splitChunk/"/>
+  <link rel="canonical" href="https://wangxin201492.github.io/MongoDB/write/oplog/MongoDB-WRITE-oplog-insert/"/>
 
 
 
 
 
-  <title>MongoDB Sharding splitChunk实现流程 | wangxin201492</title>
+  <title>Oplog 是如何写入的？ | wangxin201492</title>
   
 
 
@@ -262,7 +262,7 @@
   
   
   <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/splitChunk/MongoDB-sharding-splitChunk/">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/write/oplog/MongoDB-WRITE-oplog-insert/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="name" content="wangxin201492">
@@ -279,7 +279,7 @@
 
         
         
-          <h1 class="post-title" itemprop="name headline">MongoDB Sharding splitChunk实现流程</h1>
+          <h1 class="post-title" itemprop="name headline">Oplog 是如何写入的？</h1>
         
 
         <div class="post-meta">
@@ -291,8 +291,8 @@
               
                 <span class="post-meta-item-text">发表于</span>
               
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-09-02T16:43:32+08:00">
-                2020-09-02
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2021-06-04T10:09:10+08:00">
+                2021-06-04
               </time>
             
 
@@ -325,8 +325,8 @@
                 
               
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/MongoDB/sharding/" itemprop="url" rel="index">
-                    <span itemprop="name">sharding</span>
+                  <a href="/categories/MongoDB/write/" itemprop="url" rel="index">
+                    <span itemprop="name">write</span>
                   </a>
                 </span>
 
@@ -336,8 +336,8 @@
                 
               
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/MongoDB/sharding/splitChunk/" itemprop="url" rel="index">
-                    <span itemprop="name">splitChunk</span>
+                  <a href="/categories/MongoDB/write/oplog/" itemprop="url" rel="index">
+                    <span itemprop="name">oplog</span>
                   </a>
                 </span>
 
@@ -373,34 +373,34 @@
       
 
       
-        <h2 id="准备阶段"><a href="#准备阶段" class="headerlink" title="准备阶段"></a>准备阶段</h2><h3 id="autoSplit"><a href="#autoSplit" class="headerlink" title="autoSplit"></a>autoSplit</h3><blockquote>
-<p>shard&amp;config 节点，会有 PeriodicBalancerConfigRefresher 定时任务每隔 30s 进行 balancer&amp;split 配置刷新</p>
-<p>mongos 节点，会有 Uptime-reporter 线程每隔 10s 进行 balancer&amp;split 配置刷新</p>
-</blockquote>
-<ol>
-<li>每当有插入或者更新操作时，会触发 <code>ShardServerOpObserver</code> 的 <code>onInserts</code> / <code>onUpdate</code></li>
-<li>这2个方法都会调用 <code>incrementChunkOnInsertOrUpdate</code> 来判断是否需要进行 split chunk：chunk size 超出配置值，且开启 autoSplit</li>
-<li>如果需要进行 split chunk， 则 <code>ChunkSplitter</code> 会接管后续的 split 流程</li>
-<li>通过 <code>splitVector</code> 来获取具体的 <code>splitPoint</code>，然后调用 <code>splitChunk</code> 进行实际的 split chunk 操作</li>
-</ol>
-<h4 id="4-2-之前版本，autoSplit由mongos触发"><a href="#4-2-之前版本，autoSplit由mongos触发" class="headerlink" title="4.2 之前版本，autoSplit由mongos触发"></a>4.2 之前版本，autoSplit由mongos触发</h4><p>mongos 中 <code>updateChunkWriteStatsAndSplitIfNeeded</code> 记录每个 chunk 写入的大小，如果总更新量超过 maxChunkSizeBytes / 5 ，则会向 chunk 所在的 shard 发送一个 <code>splitVector</code> 请求来询问是否需要进行 split 。如果需要，则向 该shard 再发送一个 <code>splitChunk</code> 请求 进行实际的 split</p>
-<h3 id="split-Command"><a href="#split-Command" class="headerlink" title="split Command"></a>split Command</h3><ol>
-<li>mongos 收到 <code>split</code> 请求。判断合法性后计算 <code>splitPoint</code>，然后构造一个 <code>splitChunk</code> 请求，发送给 shard 节点</li>
-<li>shard节点 收到 <code>splitChunk</code> 请求。解析相关参数，然后 调用 <code>splitChunk</code> 进行实际的 split chunk 操作</li>
-</ol>
-<h2 id="splitChunk"><a href="#splitChunk" class="headerlink" title="splitChunk"></a>splitChunk</h2><ol>
-<li>shard 节点首先从 config 节点获取一个 <strong>why = splitting chunk chunkRange in namespace</strong> 的分布式锁</li>
-<li>然后发送一个 <code>_configsvrCommitChunkSplit</code> 请求给 config 节点</li>
-<li>config 节点判断 config.chunks 中的内容与 请求参数 之间的合法性。</li>
-<li>然后构造一个 <code>applyOps</code> 请求进行 config.chunks 集合的更新，然后进行 config.changelog 集合</li>
-<li>上述流程结束后，会判断此次 split 的边界是否有 topChunk ，如果存在的话，则将该新的chunkRange返回上游。<ol>
-<li>如果是split command 的请求，不会对 topChunk 做任何处理</li>
-<li>如果是 autoSplit ，会进行 topChunk 的处理，但是不是依赖这里返回的 topChunk，而是 ChunkSplitter 自行计算的结果</li>
-</ol>
+        <p>[TOC]</p>
+<h2 id="Oplog写入的相关组件"><a href="#Oplog写入的相关组件" class="headerlink" title="Oplog写入的相关组件"></a>Oplog写入的相关组件</h2><h3 id="OpObserver"><a href="#OpObserver" class="headerlink" title="OpObserver"></a>OpObserver</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * The OpObserver interface contains methods that get called on certain database events. It provides</span></span><br><span class="line"><span class="comment"> * a way for various server subsystems to be notified of other events throughout the server.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * In order to call any OpObserver method, you must be in a 'WriteUnitOfWork' ...</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">OpObserver</span> &#123;</span>&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>OpObserver</code> 包含了各种事件对应的 methods（ <code>onInserts</code> / <code>onUpdate</code> / <code>onDelete</code> 等等事件），这样便于其他子系统知晓这些event。调用任何的 <code>OpObserver</code> 方法都需要在 <code>WriteUnitOfWork</code> 中，也就意味着所有需要的lock都已经被 <code>WriteUnitOfWork</code> 持有。</p>
+<p>mongod进程初始化的时候会 add 多个 <code>OpObserver</code> 的实现：<code>OpObserverShardingImpl</code> / <code>AuthOpObserver</code> ，对于shardServer会add <code>ShardServerOpObserver</code> ，对于 configServer 会 add <code>ConfigServerOpObserver</code>：</p>
+<ul>
+<li><code>AuthOpObserver</code> 只监听跟权限变更相关的oplog，具体实现在 <code>AuthzManagerExternalStateLocal::logOp()</code></li>
+<li><code>ShardServerOpObserver</code>  &amp; <code>ConfigServerOpObserver</code> 都只会监听几个特定的oplog</li>
+<li>主要的 oplog 写入行为在 <code>OpObserverShardingImpl</code>中完成，对于非事务的oplog，以 onInserts 为例，这里主要完成2件事情：<ul>
+<li>通过 <code>_logOpWriter</code> 组装一条待写入 OplogDoc，通过 <code>_logOpsInner</code> 进行数据写入（此处又回调到<code>CollectionImpl::insertDocumentsForOplog</code>来完成实际的写入）</li>
+<li>旁路写入 <code>shardObserveInsertOp</code> ，如果当前shard是moveChunk的源，这里会从oplog中提取信息记录在内存中，方便增量同步用</li>
+</ul>
 </li>
-<li>析构，释放分布式锁。</li>
-</ol>
-<h2 id="topChunk-Optimization"><a href="#topChunk-Optimization" class="headerlink" title="topChunk Optimization"></a>topChunk Optimization</h2><p>包含 MinKey 或者 MaxKey 的 chunk 被称作 <code>topChunk</code>。如果 topChunk 被 split，那么可能用户有更大的概率对 shardKey 进行单调递增或单调递减的插入。这种情况下 <code>ChunkSplitter</code> 会主动向 configServer 请求尝试 moveChunk</p>
+</ul>
+<h3 id="RecoveryUnit"><a href="#RecoveryUnit" class="headerlink" title="RecoveryUnit"></a>RecoveryUnit</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * A RecoveryUnit is responsible for ensuring that data is persisted.</span></span><br><span class="line"><span class="comment"> * All on-disk information must be mutated through this interface.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">RecoveryUnit</span> &#123;</span>&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>RecoveryUnit</code> 负责确保数据的持久化，所有磁盘操作都必须通过该接口完成。实际上 <code>RecoveryUnit</code> 可以理解为 server层 的事务入口，storage层负责与引擎对接时需要实现这个接口。<code>RecoveryUnit</code> 提供了基础的 begin、commit、abort等操作，提供了Rollback&amp;commit时的callback事件设置入口，同时也提供了时间戳设置的接口。</p>
+<p>在 storageEngine init 的时候，会注册一个 <code>StorageClientObserver</code>，当opCtx初始化的时候，为opCtx设置当前使用引擎的 <code>RecoveryUnit</code>，以 wiredTiger为例，使用的就是 <code>WiredTigerRecoveryUnit</code>。</p>
+<h3 id="WriteUnitOfWork"><a href="#WriteUnitOfWork" class="headerlink" title="WriteUnitOfWork"></a>WriteUnitOfWork</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * The WriteUnitOfWork is an RAII type that begins a storage engine write unit of work on both the</span></span><br><span class="line"><span class="comment"> * Locker and the RecoveryUnit of the OperationContext. Any writes that occur during the lifetime of</span></span><br><span class="line"><span class="comment"> * this object will be committed when commit() is called, and rolled back (aborted) when the object</span></span><br><span class="line"><span class="comment"> * is destructed without a call to commit() or release().</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">WriteUnitOfWork</span> &#123;</span>&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>WriteUnitOfWork</code> 是一个 RAII 风格类，操作 opCtx 的 <code>Locker</code> &amp; <code>RecoveryUnit</code> 上开始存储引擎的写入工作单元。</p>
+<h2 id="insert时-Oplog写入流程"><a href="#insert时-Oplog写入流程" class="headerlink" title="insert时 Oplog写入流程"></a>insert时 Oplog写入流程</h2><p>insert 因为不涉及查询优化，这里的执行路径比较简单，先来看下insert时 oplog的插入流程。</p>
+<p>在 <code>insertDocuments()</code> 时会开启一个 <code>WriteUnitOfWork</code>，并为请求分配optime，随后 <code>CollectionImpl::insertDocuments()</code> 来进行数据插入，其中会依次写数据、写索引，并将oplog传播给 <code>OpObserver</code>。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// src/mongo/db/ops/write_ops_exec.cpp:295</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">insertDocuments</span><span class="params">( ... )</span> </span>&#123;</span><br><span class="line">    <span class="comment">// Intentionally not using writeConflictRetry. That is handled by the caller so it can react to</span></span><br><span class="line">    <span class="comment">// oversized batches.</span></span><br><span class="line">    <span class="function">WriteUnitOfWork <span class="title">wuow</span><span class="params">(opCtx)</span></span>;</span><br><span class="line">		...</span><br><span class="line">    <span class="comment">// 非事务的insert会分配时间戳</span></span><br><span class="line">    <span class="keyword">auto</span> oplogSlots = repl::getNextOpTimes(opCtx, batchSize);</span><br><span class="line">  	...</span><br><span class="line">    uassertStatusOK(</span><br><span class="line">        collection-&gt;insertDocuments(opCtx, <span class="built_in">begin</span>, <span class="built_in">end</span>, &amp;CurOp::<span class="built_in">get</span>(opCtx)-&gt;debug(), fromMigrate));</span><br><span class="line">    wuow.commit();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// src/mongo/db/catalog/collection_impl.cpp:432</span></span><br><span class="line"><span class="function">Status <span class="title">CollectionImpl::insertDocuments</span><span class="params">( ... )</span> </span>&#123;</span><br><span class="line">  	...</span><br><span class="line">    <span class="keyword">const</span> SnapshotId sid = opCtx-&gt;recoveryUnit()-&gt;getSnapshotId();</span><br><span class="line"></span><br><span class="line">  	<span class="comment">// 写数据、写索引</span></span><br><span class="line">    status = _insertDocuments(opCtx, <span class="built_in">begin</span>, <span class="built_in">end</span>, opDebug);</span><br><span class="line">    <span class="keyword">if</span> (!status.isOK()) &#123;</span><br><span class="line">        <span class="keyword">return</span> status;</span><br><span class="line">    &#125;</span><br><span class="line">    invariant(sid == opCtx-&gt;recoveryUnit()-&gt;getSnapshotId());</span><br><span class="line"></span><br><span class="line">  	<span class="comment">// oplog 传播给 OpObserver</span></span><br><span class="line">    getGlobalServiceContext()-&gt;getOpObserver()-&gt;onInserts(</span><br><span class="line">        opCtx, ns(), uuid(), <span class="built_in">begin</span>, <span class="built_in">end</span>, fromMigrate);</span><br><span class="line"></span><br><span class="line">  	<span class="comment">// 注册 onCommit 回调</span></span><br><span class="line">    opCtx-&gt;recoveryUnit()-&gt;onCommit(</span><br><span class="line">        [<span class="keyword">this</span>](boost::optional&lt;Timestamp&gt;) &#123; notifyCappedWaitersIfNeeded(); &#125;);</span><br><span class="line">		...</span><br><span class="line">    <span class="keyword">return</span> Status::OK();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>注册的 <code>OpObserver</code> 会依次捕获该 oplog 写入事件进行处理，如上文提到，真正写 oplog 在 <code>OpObserverShardingImpl</code> 中完成，最终会构造一个 <code>DocWriter</code> 并调用 <code>CollectionImpl::insertDocumentsForOplog</code> 来进行实际写入。</p>
 
       
     </div>
@@ -460,8 +460,8 @@
         <div class="post-nav">
           <div class="post-nav-next post-nav-item">
             
-              <a href="/MongoDB/sharding/shardCollection/MongoDB-sharding-shardCollection/" rel="next" title="MongoDB sharding shardCollection实现流程">
-                <i class="fa fa-chevron-left"></i> MongoDB sharding shardCollection实现流程
+              <a href="/MongoDB/sharding/clusterTime/MongoDB-sharding-clusterTime/" rel="next" title="MongoDB集群中的 clusterTime">
+                <i class="fa fa-chevron-left"></i> MongoDB集群中的 clusterTime
               </a>
             
           </div>
@@ -469,10 +469,6 @@
           <span class="post-nav-divider"></span>
 
           <div class="post-nav-prev post-nav-item">
-            
-              <a href="/MongoDB/sharding/StaleConfig/MongoDB-sharding-StaleConfig/" rel="prev" title="MongoDB sharding 路由刷新策略">
-                MongoDB sharding 路由刷新策略 <i class="fa fa-chevron-right"></i>
-              </a>
             
           </div>
         </div>
@@ -620,7 +616,7 @@
             
 
             
-              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#准备阶段"><span class="nav-number">1.</span> <span class="nav-text">准备阶段</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#autoSplit"><span class="nav-number">1.1.</span> <span class="nav-text">autoSplit</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#4-2-之前版本，autoSplit由mongos触发"><span class="nav-number">1.1.1.</span> <span class="nav-text">4.2 之前版本，autoSplit由mongos触发</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#split-Command"><span class="nav-number">1.2.</span> <span class="nav-text">split Command</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#splitChunk"><span class="nav-number">2.</span> <span class="nav-text">splitChunk</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#topChunk-Optimization"><span class="nav-number">3.</span> <span class="nav-text">topChunk Optimization</span></a></li></ol></div>
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Oplog写入的相关组件"><span class="nav-number">1.</span> <span class="nav-text">Oplog写入的相关组件</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#OpObserver"><span class="nav-number">1.1.</span> <span class="nav-text">OpObserver</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#RecoveryUnit"><span class="nav-number">1.2.</span> <span class="nav-text">RecoveryUnit</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#WriteUnitOfWork"><span class="nav-number">1.3.</span> <span class="nav-text">WriteUnitOfWork</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#insert时-Oplog写入流程"><span class="nav-number">2.</span> <span class="nav-text">insert时 Oplog写入流程</span></a></li></ol></div>
             
 
           </div>

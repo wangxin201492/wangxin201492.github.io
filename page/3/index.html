@@ -260,6 +260,177 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/ReadingNote/WebsiteArchitecture/ReadingNote-WebsiteArchitecture-CoreElement/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/ReadingNote/WebsiteArchitecture/ReadingNote-WebsiteArchitecture-CoreElement/" itemprop="url">大型网站技术架构 - 大型网站核心架构要素</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2014-07-25T20:23:43+08:00">
+                2014-07-25
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/ReadingNote/" itemprop="url" rel="index">
+                    <span itemprop="name">ReadingNote</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/ReadingNote/WebsiteArchitecture/" itemprop="url" rel="index">
+                    <span itemprop="name">WebsiteArchitecture</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="1-性能"><a href="#1-性能" class="headerlink" title="1.性能"></a>1.性能</h2><ul>
+<li><strong>浏览器端</strong>：浏览器缓存、页面压缩、合理布局、减少cookie传输、CDN</li>
+<li><strong>应用服务器端</strong>：本地缓存、分布式缓存、异步。</li>
+<li><strong>代码</strong>：多线程、改善内存管理。</li>
+<li><strong>数据库</strong>：索引、缓存、sql优化</li>
+</ul>
+<p><strong>衡量网站性能</strong>有一系列的指标：响应时间、TPS、系统性能计数器。</p>
+<h2 id="2-可用性"><a href="#2-可用性" class="headerlink" title="2.可用性"></a>2.可用性</h2><p>网站可用性主要手段是冗余。</p>
+<p>对于应用服务器而言，多台应用服务器通过负载均衡组成一个集群，任何服务器宕机只需要把请求切换到其他服务器即可。但是有一个前提条件：应用服务器上不能保存请求的会话信息。</p>
+<p>对于存储服务器，当有服务器宕机时需要将数据访问转移到可用的服务器上，并进行数据回复，以保证继续有服务器宕机的时候数据依然可用。</p>
+<p>衡量一个系统是否满足高可用的目标，就是假设系统中任何一台或者多台服务器宕机，系统整体是否依然可用。</p>
+<h2 id="3-伸缩性"><a href="#3-伸缩性" class="headerlink" title="3.伸缩性"></a>3.伸缩性</h2><p>伸缩性是指通过不断向及群众加入服务器的手段来缓解不断上升的用户并发访问压力和不断增长的数据存储需求。</p>
+<p>衡量架构伸缩性的主要指标就是是否可以用多台服务器构建进群，是否容易向集群中添加新的服务器。加入新的服务器后是否可以提供和原来的服务器无差别的服务。集群中可容纳的总的服务器的数量是否有限制。</p>
+<p>应用服务器：负载均衡</p>
+<p>缓存服务器：改进缓存路由算法</p>
+<p>数据库服务器：数据复制，主从热备，路由分区</p>
+<p>NoSQL:天然支持</p>
+<h2 id="4-扩展性"><a href="#4-扩展性" class="headerlink" title="4.扩展性"></a>4.扩展性</h2><p>不同于其他架构要素主要关注非功能性需求，网站的扩展性架构直接关注网站的功能性需求。</p>
+<p>衡量一个网站架构</p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/ReadingNote/WebsiteArchitecture/ReadingNote-WebsiteArchitecture-Scalability/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -484,7 +655,7 @@
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">21</span>
+                  <span class="site-state-item-count">22</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -495,7 +666,7 @@
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">19</span>
+                  <span class="site-state-item-count">21</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
