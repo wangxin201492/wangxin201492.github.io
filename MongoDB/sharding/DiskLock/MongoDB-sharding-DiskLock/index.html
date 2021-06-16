@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next pisces use-motion" lang="zh-Hans">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+  <link href="/lib/fancybox/source/jquery.fancybox.css?v=2.1.5" rel="stylesheet" type="text/css" />
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=5.1.4" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=5.1.4">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=5.1.4">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=5.1.4">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=5.1.4" color="#222">
+
+
+
+
+
+  <meta name="keywords" content="MongoDB-OTT," />
+
+
+
+
+
+
+
+
+
+
+<meta name="description" content="[TOC] sharding实例在 createCollection&#x2F;dropCollection 等场景下，为了规避并发问题引入了分布式锁机制。分布式锁的信息记录在 config.locks  集合中，结合 config.lockpings 中的信息来完成相关逻辑实现。 分布式锁原理1. config.lockpings 和 config.locks 集合中存储的内容config.lockpin">
+<meta property="og:type" content="article">
+<meta property="og:title" content="MongoDB sharding中分布式锁机制">
+<meta property="og:url" content="https://wangxin201492.github.io/MongoDB/sharding/DiskLock/MongoDB-sharding-DiskLock/index.html">
+<meta property="og:site_name" content="wangxin201492">
+<meta property="og:description" content="[TOC] sharding实例在 createCollection&#x2F;dropCollection 等场景下，为了规避并发问题引入了分布式锁机制。分布式锁的信息记录在 config.locks  集合中，结合 config.lockpings 中的信息来完成相关逻辑实现。 分布式锁原理1. config.lockpings 和 config.locks 集合中存储的内容config.lockpin">
+<meta property="og:image" content="https://wangxin201492.github.io/techImages/MongoDB-sharding-DiskLockManager.png">
+<meta property="article:published_time" content="2020-03-24T11:11:00.000Z">
+<meta property="article:modified_time" content="2021-06-16T03:28:33.098Z">
+<meta property="article:author" content="wangxin201492">
+<meta property="article:tag" content="MongoDB-OTT">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://wangxin201492.github.io/techImages/MongoDB-sharding-DiskLockManager.png">
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Pisces',
+    version: '5.1.4',
+    sidebar: {"position":"right","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: true,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    duoshuo: {
+      userId: '0',
+      author: '博主'
+    },
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+
+  <link rel="canonical" href="https://wangxin201492.github.io/MongoDB/sharding/DiskLock/MongoDB-sharding-DiskLock/"/>
+
+
+
+
+
+  <title>MongoDB sharding中分布式锁机制 | wangxin201492</title>
+  
+
+
+
+
+
+  <script type="text/javascript">
+    var _hmt = _hmt || [];
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "https://hm.baidu.com/hm.js?b4b40ab284f92e7b4921a8198acda5b7";
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+  </script>
+
+
+
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-Hans">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-right page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/"  class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">wangxin201492</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle"></p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        <li class="menu-item menu-item-home">
+          <a href="/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            首页
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-tags">
+          <a href="/tags/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            标签
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-categories">
+          <a href="/categories/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            分类
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-question-circle"></i> <br />
+            
+            归档
+          </a>
+        </li>
+      
+
+      
+    </ul>
+  
+
+  
+</nav>
+
+
+
+ </div>
+    </header>
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/DiskLock/MongoDB-sharding-DiskLock/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">MongoDB sharding中分布式锁机制</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-03-24T19:11:00+08:00">
+                2020-03-24
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/" itemprop="url" rel="index">
+                    <span itemprop="name">sharding</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/DiskLock/" itemprop="url" rel="index">
+                    <span itemprop="name">DiskLock</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>[TOC]</p>
+<p>sharding实例在 createCollection/dropCollection 等场景下，为了规避并发问题引入了分布式锁机制。分布式锁的信息记录在 <a href="https://docs.mongodb.com/manual/reference/config-database/index.html#config.locks" target="_blank" rel="noopener"><code>config.locks</code></a>  集合中，结合 <a href="https://docs.mongodb.com/manual/reference/config-database/index.html#config.lockpings" target="_blank" rel="noopener"><code>config.lockpings</code></a> 中的信息来完成相关逻辑实现。</p>
+<h2 id="分布式锁原理"><a href="#分布式锁原理" class="headerlink" title="分布式锁原理"></a>分布式锁原理</h2><h3 id="1-config-lockpings-和-config-locks-集合中存储的内容"><a href="#1-config-lockpings-和-config-locks-集合中存储的内容" class="headerlink" title="1. config.lockpings 和 config.locks 集合中存储的内容"></a>1. <code>config.lockpings</code> 和 <code>config.locks</code> 集合中存储的内容</h3><h4 id="config-lockpings"><a href="#config-lockpings" class="headerlink" title="config.lockpings"></a>config.lockpings</h4><p><a href="https://docs.mongodb.com/manual/reference/config-database/index.html#config.lockpings" target="_blank" rel="noopener"><code>config.lockpings</code></a> 集合跟踪记录分片集群中所有活跃的组件。</p>
+<p>如果一个 mongos 运行在 example.com:30000 ，那么 <code>config.lockpings</code> 关于这个mongos的记录是这个样子的</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">&#123; </span><br><span class="line">	<span class="attr">"_id"</span> : <span class="string">"example.com:30000:1350047994:16807"</span>, <span class="comment">// 记录组件的标识， mongos 和 shard 节点均需要定期和 config 节点保持心跳</span></span><br><span class="line">	<span class="attr">"ping"</span> : ISODate(<span class="string">"2020-07-12T18:32:54.892Z"</span>) <span class="comment">// 组件定期与 `lockpings` 集合保持心跳，即更新 `ping` 字段</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p><code>_id</code> 字段内部称为 <code>processID</code> 。<code>processID</code> 对于 config 节点固定为”ConfigServer”；对于 mongos / shard 节点，则是以”:”分隔的四段信息分别为：hostname / port / timestamp / 随机int64值。该4项信息在进程启动时即已决定，进程存活期间不会被修改。</p>
+</blockquote>
+<h4 id="config-locks"><a href="#config-locks" class="headerlink" title="config.locks"></a>config.locks</h4><p><a href="https://docs.mongodb.com/manual/reference/config-database/index.html#config.locks" target="_blank" rel="noopener"><code>config.locks</code></a> 集合存储了分布式锁信息。</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">   <span class="attr">"_id"</span> : <span class="string">"test.myShardedCollection"</span>, <span class="comment">// 锁的名称，下文简称 lockName。对 database 或者 namespace 的部分场景操作需要获取分布式锁，所以一般 database 或者 namespace</span></span><br><span class="line">   <span class="attr">"state"</span> : <span class="number">2</span>, <span class="comment">// 锁的状态。0 表示 UNLOCKED，2 表示 LOCKED，1 表示 LOCK_PREP（仅对老版本3个config节点，目前代码中已无相关逻辑）</span></span><br><span class="line">   <span class="attr">"process"</span> : <span class="string">"ConfigServer"</span>, <span class="comment">// 即 processID。与上文讲到的 config.lockpings 集合中 _id 字段的取值是一样的</span></span><br><span class="line">   <span class="attr">"ts"</span> : ObjectId(<span class="string">"5be0b9ede46e4f441a60d891"</span>), <span class="comment">// 锁ID，下文简称 lockID。每次尝试获取分布式锁时的 锁ID 都是独有的。</span></span><br><span class="line">   <span class="attr">"when"</span> : ISODate(<span class="string">"2020-07-12T21:52:00.846Z"</span>), <span class="comment">// 获取锁的时间</span></span><br><span class="line">   <span class="attr">"who"</span> : <span class="string">"ConfigServer:Balancer"</span>, <span class="comment">// 获取锁的角色。  以":"分隔，第一段与 process字段 相同， 第二段 进程获取锁的线程名称。 ConfigServer:Balancer 表示 config进程的Balancer线程</span></span><br><span class="line">   <span class="attr">"why"</span> : <span class="string">"Migrating chunk(s) in collection test.myShardedCollection"</span> <span class="comment">// 获取锁的原因</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<blockquote>
+<p><code>_id</code> 下文简称 <code>lockName</code>, <code>process</code> 下文简称 <code>processID</code>，<code>ts</code> 下文简称 <code>lockID</code></p>
+</blockquote>
+<h3 id="2-与-config-lockpings-和-config-locks-的基本交互"><a href="#2-与-config-lockpings-和-config-locks-的基本交互" class="headerlink" title="2. 与 config.lockpings 和 config.locks 的基本交互"></a>2. 与 <code>config.lockpings</code> 和 <code>config.locks</code> 的基本交互</h3><blockquote>
+<p> 与上述2个集合的基础交互（<code>DistLockCatalog</code> 提供了与上述2个集合的基础交互动作，而 <code>DistLockCatalogImpl</code> 则是接口的具体实现）</p>
+</blockquote>
+<p><strong>与 <code>config.lockpings</code> 的交互有 3 种场景：</strong></p>
+<ul>
+<li><code>replSetDistLockPinger</code> 线程每隔 30s 通过一个 <code>upsert: true</code> 的 <code>findAndModify</code> 请求更新ping字段</li>
+<li>系统 shutdown 时，会构造一个 <code>update: {}</code> 的 <code>findAndModify</code> 请求清理掉对应的document</li>
+<li>此外在尝试获取分布式锁时，会获取对应组件上次心跳的时间，基于此判断组件是否已经丢失心跳，进而判断是否需要抢占锁</li>
+</ul>
+<p>与 <code>config.locks</code> 交互便是我们关心的分布式锁交互过程：</p>
+<ul>
+<li>组件获取到分布式锁有2种方式：<ul>
+<li><code>grabLock</code> : <strong>没有期望的 <code>lockName</code> 记录</strong>或者<strong>有期望的 <code>lockName</code> 记录且 <code>state = 0(UNLOCKED)</code></strong> ，通过更新 <code>state = 2(LOCKED)</code>, 同时更新<code>processID</code>/<code>lockID</code>/<code>who</code>/<code>when</code>/<code>why</code>字段的方式获取锁</li>
+<li><code>overtakeLock</code> : 对于*<em>期望 <code>lockName</code>记录，其 <code>state = 0(UNLOCKED)</code> 或者 <code>lockID = oldTS</code> *</em>，通过更新 <code>state = 2(LOCKED)</code>、更新 <code>lockID = newTS</code>、更新<code>processID</code>/<code>who</code>/<code>when</code>/<code>why</code>字段的方式抢占锁</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-分布式锁获取逻辑"><a href="#3-分布式锁获取逻辑" class="headerlink" title="3. 分布式锁获取逻辑"></a>3. 分布式锁获取逻辑</h3><blockquote>
+<p>主要是通过 <code>ReplSetDistLockManager::lockWithSessionID()</code> 来完成的</p>
+</blockquote>
+<ol>
+<li>在预期情况下，应不存在对应的锁或者锁的状态应该是 <code>UNLOCKED</code>。所以首先通过 <code>grabLock</code> 的方式来获取锁</li>
+<li>如通过 <code>grabLock</code> 获取失败，则说明可能存在锁竞争的情况。则通过锁的名称来获取目前 <code>config.locks</code> 集合中记录的对应锁的信息</li>
+<li>基于锁的信息来判断：如果 <strong>当前记录的分布式锁已经超时</strong> 或者 <strong>其对应的 processID 为当前请求的processID</strong>， 则通过 <code>overtakeLock</code> 的方式抢占锁<ol>
+<li>当前记录的分布式锁已经超时：<code>ReplSetDistLockManager</code> 内部维护一个 <code>_pingHistory</code> 用于协助判断 <code>config.locks</code> 中记录的锁是否超时。<code>_pingHistory</code> 中记录了 <code>processID</code>/<code>pingValue</code>/<code>config节点的serverTime</code>/<code>lockID</code>/<code>config节点的electionId</code>。<ol>
+<li>无法在 <code>config.lockpings</code> 集合中找到对应组件的心跳记录，则认为<strong>锁未超时</strong></li>
+<li>如果 <code>_pingHistory</code> 中不存在对应 <code>lockName</code> 的记录，则认为<strong>锁未超时</strong>，并将相关结果记录到 <code>_pingHistor</code>中</li>
+<li>如果与 <code>_pingHistory</code> 中记录相比，<strong>锁的持有者心跳正常(<code>pingValue</code>字段持续更新)</strong> 或者 <strong>锁的<code>lockID</code>发生变化</strong> 或者 <strong>config发生主节点变更(<code>electionId</code>发生变化)</strong> 则认为<strong>锁未超时</strong>，同时将相关结果记录到 <code>_pingHistory</code> 便于下次对比</li>
+<li>最后，如果上述情况都没有发生，而 <code>_pingHistory</code> 中记录的 <code>config节点的serverTime</code> 时间与当前时间超过 15min，则认为<strong>锁已经超时</strong></li>
+</ol>
+</li>
+<li>锁的信息中对应的 <code>ts</code> 为当前请求的<code>ts</code></li>
+</ol>
+</li>
+<li>如上述操作均失败，则等待后重新执行上述操作。直到超出指定的等待时间（<code>waitFor</code>）则返回<code>LockBusy</code></li>
+</ol>
+<p>借助简要代码看下：</p>
+<blockquote>
+<p>入参中：<code>name</code> 为锁的名称（即 <code>_id</code> 字段），<code>lockSessionID</code> 为获取锁唯一的锁ID（即 <code>ts</code> 字段），<code>waitFor</code> 为预期等待锁的时间。</p>
+</blockquote>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">StatusWith&lt;DistLockHandle&gt; <span class="title">ReplSetDistLockManager::lockWithSessionID</span><span class="params">(OperationContext* opCtx,</span></span></span><br><span class="line"><span class="function"><span class="params">                                                                     StringData name,</span></span></span><br><span class="line"><span class="function"><span class="params">                                                                     StringData whyMessage,</span></span></span><br><span class="line"><span class="function"><span class="params">                                                                     <span class="keyword">const</span> OID&amp; lockSessionID,</span></span></span><br><span class="line"><span class="function"><span class="params">                                                                     Milliseconds waitFor)</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Distributed lock acquisition works by tring to update the state of the lock to 'taken'. If</span></span><br><span class="line">    <span class="comment">// the lock is currently taken, we will back off and try the acquisition again, repeating this</span></span><br><span class="line">    <span class="comment">// until the lockTryInterval has been reached. If a network error occurs at each lock</span></span><br><span class="line">    <span class="comment">// acquisition attempt, the lock acquisition will be retried immediately.</span></span><br><span class="line">    <span class="keyword">while</span> (waitFor &lt;= Milliseconds::zero() || Milliseconds(timer.<span class="built_in">millis</span>()) &lt; waitFor) &#123;</span><br><span class="line">        ...</span><br><span class="line"></span><br><span class="line">        <span class="keyword">auto</span> lockResult = _catalog-&gt;grabLock(</span><br><span class="line">            opCtx, name, lockSessionID, who, _processID, Date_t::now(), whyMessage.toString());</span><br><span class="line"></span><br><span class="line">        <span class="keyword">auto</span> status = lockResult.getStatus();</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (status.isOK()) &#123;</span><br><span class="line">            ...</span><br><span class="line">            <span class="keyword">return</span> lockSessionID;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// Get info from current lock and check if we can overtake it.</span></span><br><span class="line">        <span class="keyword">auto</span> getLockStatusResult = _catalog-&gt;getLockByName(opCtx, name);</span><br><span class="line">        <span class="keyword">const</span> <span class="keyword">auto</span>&amp; getLockStatus = getLockStatusResult.getStatus();</span><br><span class="line">        ...</span><br><span class="line"></span><br><span class="line">        <span class="comment">// Note: Only attempt to overtake locks that actually exists. If lock was not</span></span><br><span class="line">        <span class="comment">// found, use the normal grab lock path to acquire it.</span></span><br><span class="line">        <span class="keyword">if</span> (getLockStatusResult.isOK()) &#123;</span><br><span class="line">            <span class="keyword">auto</span> currentLock = getLockStatusResult.getValue();</span><br><span class="line">            <span class="keyword">auto</span> isLockExpiredResult = isLockExpired(opCtx, currentLock, lockExpiration);</span><br><span class="line"></span><br><span class="line">            <span class="keyword">if</span> (isLockExpiredResult.getValue() || (lockSessionID == currentLock.getLockID())) &#123;</span><br><span class="line">                <span class="keyword">auto</span> overtakeResult = _catalog-&gt;overtakeLock(xxx);</span><br><span class="line">                ...</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        ...</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (waitFor == Milliseconds::zero()) &#123;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">const</span> Milliseconds timeRemaining = <span class="built_in">std</span>::<span class="built_in">max</span>(Milliseconds::zero(), waitFor - Milliseconds(timer.<span class="built_in">millis</span>()));</span><br><span class="line">        sleepFor(<span class="built_in">std</span>::<span class="built_in">min</span>(kLockRetryInterval, timeRemaining));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> &#123;ErrorCodes::LockBusy, str::stream() &lt;&lt; <span class="string">"timed out waiting for "</span> &lt;&lt; name&#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="4-加锁的场景"><a href="#4-加锁的场景" class="headerlink" title="4. 加锁的场景"></a>4. 加锁的场景</h3><ul>
+<li><p>collectin操作：<code>createCollection</code> / <code>dropCollection</code> / <code>shardCollection</code> 会同时对 collection 的 <strong>namespace</strong> 和 <strong>database</strong> 加锁</p>
+</li>
+<li><p>database操作：<code>movePrimary</code> / <code>enableSharding</code> / <code>createDatabase</code> / <code>dropDatabase</code> 时会对 <strong>database</strong> 加锁，<code>dropDatabase</code> 还会依次对 db 下所有的 <strong>collection</strong> 加锁(<code>dropCollection</code>)</p>
+</li>
+<li><p>chunk操作：Migrating chunk(s) in collection / merging chunks / splitting chunk</p>
+</li>
+<li><p>map-reduce操作：mr-post-process</p>
+</li>
+</ul>
+<h3 id="5-解锁场景"><a href="#5-解锁场景" class="headerlink" title="5. 解锁场景"></a>5. 解锁场景</h3><ul>
+<li>一般情况在需要获取分布式锁的场景下，获取分布式锁成功会获得到一个 <code>DistLockManager::ScopedDistLock</code> 的对象，并在锁使用完成后触发该对象的析构函数，释放锁（修改state=UNLOCKED）。</li>
+<li>另外如果 <code>grabLock</code> 时，如果获取失败返回异常是由于 config节点 状态异常导致，那么也会进行 <code>unlock</code> 方便下次可以直接 <code>grabLock</code> 完成加锁。</li>
+<li>MigrationManager 一些场景触发 // TODO</li>
+<li>如果<strong>在上述任何场景触发的unlock失败</strong> 或者 <strong>一些操作导致锁的状态未知</strong> 后，都会加入到 <code>_unlockList</code> 队列，在 <code>replSetDistLockPinger</code> 定期执行时也会重新进行 unlock 操作</li>
+</ul>
+<hr>
+<h2 id="分布式锁代码解析"><a href="#分布式锁代码解析" class="headerlink" title="分布式锁代码解析"></a>分布式锁代码解析</h2><h3 id="1-核心类说明"><a href="#1-核心类说明" class="headerlink" title="1. 核心类说明"></a>1. 核心类说明</h3><h4 id="DistLockCatalogImpl-DistLockCatalog-对分布式锁的一些具体操作"><a href="#DistLockCatalogImpl-DistLockCatalog-对分布式锁的一些具体操作" class="headerlink" title="DistLockCatalogImpl : DistLockCatalog : 对分布式锁的一些具体操作"></a><code>DistLockCatalogImpl : DistLockCatalog</code> : 对分布式锁的一些具体操作</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;**</span><br><span class="line"> * Interface for the distributed lock operations.</span><br><span class="line"> *&#x2F;</span><br><span class="line">class DistLockCatalog &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>对config.lockpings的基础操作：ping/getPing/stopPing</li>
+<li>获取分布式锁or config的信息：getServerInfo/getLockByTS/getLockByname</li>
+<li>对锁的操作(config.locks)：grabLock/overtakeLock/unlock/unlockAll</li>
+</ol>
+<p>其中<code>grabLock</code> 和 <code>overtakeLock</code> 是两个核心的获取锁的方法：</p>
+<ol>
+<li><code>grabLock</code> : 将<code>lockID</code>的锁更新为指定的<code>lockSessionID</code></li>
+<li><code>overtakeLock</code> : 强制将锁的持有者从<code>currentHolderTS</code>更改为<code>lockSessionID</code></li>
+</ol>
+<h4 id="ReplSetDistLockManager-DistLockManager-分布式锁的一些接口，主要封装DistLockCatalogImpl而实现"><a href="#ReplSetDistLockManager-DistLockManager-分布式锁的一些接口，主要封装DistLockCatalogImpl而实现" class="headerlink" title="ReplSetDistLockManager : DistLockManager : 分布式锁的一些接口，主要封装DistLockCatalogImpl而实现"></a><code>ReplSetDistLockManager : DistLockManager</code> : 分布式锁的一些接口，主要封装DistLockCatalogImpl而实现</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;**</span><br><span class="line"> * Interface for handling distributed locks.</span><br><span class="line"> *</span><br><span class="line"> * Usage:</span><br><span class="line"> *</span><br><span class="line"> * auto scopedDistLock &#x3D; mgr-&gt;lock(...);</span><br><span class="line"> *</span><br><span class="line"> * if (!scopedDistLock.isOK()) &#123;</span><br><span class="line"> *   &#x2F;&#x2F; Did not get lock. scopedLockStatus destructor will not call unlock.</span><br><span class="line"> * &#125;</span><br><span class="line"> *</span><br><span class="line"> * &#x2F;&#x2F; To check if lock is still owned:</span><br><span class="line"> * auto status &#x3D; scopedDistLock.getValue().checkStatus();</span><br><span class="line"> *</span><br><span class="line"> * if (!status.isOK()) &#123;</span><br><span class="line"> *   &#x2F;&#x2F; Someone took over the lock! Unlock will still be called at destructor, but will</span><br><span class="line"> *   &#x2F;&#x2F; practically be a no-op since it doesn&#39;t own the lock anymore.</span><br><span class="line"> * &#125;</span><br><span class="line"> *&#x2F;</span><br><span class="line">class DistLockManager &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>持有一个线程<code>replSetDistLockPinger</code>，用户定时与config.lockpings心跳，并对需要unlock的锁进行unlock</li>
+<li>提供对锁处理的一些方法：<ol>
+<li>加锁：lock/lockWithSessionID/tryLockWithLocalWriteConcern<ol>
+<li>lock通过调用lockWithSessionID来实现</li>
+</ol>
+</li>
+<li>解锁：unlock/unlockAll</li>
+</ol>
+</li>
+<li>持有一个内部类ScopedDistLock : 一个RAII风格的类，持有锁的基础信息</li>
+</ol>
+<h3 id="2-初始化"><a href="#2-初始化" class="headerlink" title="2. 初始化"></a>2. 初始化</h3><p><img src="https://wangxin201492.github.io/techImages/MongoDB-sharding-DiskLockManager.png" alt="MongoDB-sharding-DiskLockManager"></p>
+<p>mongos初始化时会生成一个与host、port、时间戳、随机值有关的一个<code>distLockProcessId</code>作为<code>ReplSetDistLockManager</code>的唯一标识，并在makeCatalogClient中完成对DistLockCatalogImpl、ReplSetDistLockManager、ShardingCatalogClientImpl的初始化</p>
+<ul>
+<li>DistLockCatalogImpl : 是<code>DistLockCatalog</code>的具体实现。默认初始化方法存储了<code>config.locks</code>，<code>config.lockpings</code>表名</li>
+<li>ReplSetDistLockManager : 是<code>DistLockManager</code>的具体实现。初始化方法存储了上面提到的<code>distLockProcessId</code>, <code>DistLockCatalog</code>并完成了<code>pingInterval</code>, <code>lockExpiration</code>的初始化，其中<code>pingInterval</code>默认为30s，<code>lockExpiration</code>默认为15min</li>
+<li>ShardingCatalogClientImpl : 是<code>ShardingCatalogClient</code>的具体实现。初始化方法存储了上面提到的<code>DistLockManager</code>。<em>(该类只提供了一个获取DistLockManager的方式及start、shutdown的方法，与DistLockManager无其他关系)</em></li>
+</ul>
+<p>然后将ShardingCatalogClientImpl作为一个数据成员存储在全局的Grid中</p>
+<h3 id="3-replSetDistLockPinger线程"><a href="#3-replSetDistLockPinger线程" class="headerlink" title="3. replSetDistLockPinger线程"></a>3. replSetDistLockPinger线程</h3><h4 id="线程启动"><a href="#线程启动" class="headerlink" title="线程启动"></a>线程启动</h4><p>grid初始化完成后，紧接着会调用<code>grid-&gt;catalogClient()-&gt;startup();</code>，该语句实际上最终调用到<code>ReplSetDistLockManager::startUp()</code>，启动一个replSetDistLockPinger线程，线程的具体执行在<code>ReplSetDistLockManager::doTask()</code>中</p>
+<h4 id="线程逻辑-doTask"><a href="#线程逻辑-doTask" class="headerlink" title="线程逻辑 : doTask"></a>线程逻辑 : doTask</h4><ol>
+<li>config.lockpings交互：调用DistLockCatalog::ping()，构造一个findAndModify请求根据processID更新ping字段(upsert=true)。并更新本地的elapsedSincelastPing，如果与上次ping时间超过_pingInterval*10 则打印warning日志</li>
+<li>unlock：遍历本地的 <code>_unlockList</code> ，对需要unlock的锁调用DistLockCatalog::unlock()。如果返回失败则打印warning日志并重新加入_unlockList中</li>
+<li>sleep _pingInterval 即15s</li>
+</ol>
+<h3 id="4-触发分布式锁的场景"><a href="#4-触发分布式锁的场景" class="headerlink" title="4. 触发分布式锁的场景"></a>4. 触发分布式锁的场景</h3><ul>
+<li>chunk操作：Migrating chunk(s) in collection / merging chunks / splitting chunk</li>
+<li>db or collection操作：movePrimary/enableSharding/dropCollection …</li>
+<li>map-reduce操作：mr-post-process</li>
+</ul>
+<h4 id="collection-操作"><a href="#collection-操作" class="headerlink" title="collection 操作"></a>collection 操作</h4><table>
+<thead>
+<tr>
+<th>whyMessage</th>
+<th>_id</th>
+<th>function</th>
+<th>file</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>“createCollection”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_create_collection_command.cpp</td>
+</tr>
+<tr>
+<td>“createCollection”</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_create_collection_command.cpp</td>
+</tr>
+<tr>
+<td>“dropCollection”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_drop_collection_command.cpp</td>
+</tr>
+<tr>
+<td>“dropCollection”</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_drop_collection_command.cpp</td>
+</tr>
+<tr>
+<td>“shardCollection”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_shard_collection_command.cpp</td>
+</tr>
+<tr>
+<td>“shardCollection”</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_shard_collection_command.cpp</td>
+</tr>
+</tbody></table>
+<h4 id="database-操作"><a href="#database-操作" class="headerlink" title="database 操作"></a>database 操作</h4><table>
+<thead>
+<tr>
+<th>whyMessage</th>
+<th>_id</th>
+<th>function</th>
+<th>file</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>“movePrimary”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_move_primary_command.cpp</td>
+</tr>
+<tr>
+<td>“enableSharding”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_enable_sharding_command.cpp</td>
+</tr>
+<tr>
+<td>“createDatabase”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_create_database_command.cpp</td>
+</tr>
+<tr>
+<td>“dropDatabase”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_drop_database_command.cpp</td>
+</tr>
+<tr>
+<td>“dropCollection”</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_drop_database_command.cpp</td>
+</tr>
+</tbody></table>
+<h4 id="chunk-操作"><a href="#chunk-操作" class="headerlink" title="chunk 操作"></a>chunk 操作</h4><table>
+<thead>
+<tr>
+<th>whyMessage</th>
+<th>_id</th>
+<th>function</th>
+<th>file</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>“splitting chunk “ &lt;&lt; chunkRange.toString() &lt;&lt; “ in “ &lt;&lt; nss.toString()</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/split_chunk.cpp</td>
+</tr>
+<tr>
+<td>“merging chunks in “ &lt;&lt; nss.ns() &lt;&lt; “ from “ &lt;&lt; minKey &lt;&lt; “ to “ &lt;&lt; maxKey</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/merge_chunks_command.cpp</td>
+</tr>
+<tr>
+<td>“Migrating chunk(s) in collection “ &lt;&lt; migrateType.getNss().ns())</td>
+<td>namespace</td>
+<td>tryLockWithLocalWriteConcern</td>
+<td>src/mongo/db/s/balancer/migration_manager.cpp</td>
+</tr>
+<tr>
+<td>“Migrating chunk(s) in collection “ &lt;&lt; nss.ns()</td>
+<td>namespace</td>
+<td>lockWithSessionID</td>
+<td>src/mongo/db/s/balancer/migration_manager.cpp</td>
+</tr>
+</tbody></table>
+<h4 id="map-reduce操作"><a href="#map-reduce操作" class="headerlink" title="map-reduce操作"></a>map-reduce操作</h4><table>
+<thead>
+<tr>
+<th>whyMessage</th>
+<th>_id</th>
+<th>function</th>
+<th>file</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>“mr-post-process”</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/s/commands/cluster_map_reduce_cmd.cpp</td>
+</tr>
+</tbody></table>
+
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+      <div>
+        <div style="padding: 10px 0; margin: 20px auto; width: 90%; text-align: center;">
+  <div>坚持原创技术分享，您的支持将鼓励我继续创作！</div>
+  <button id="rewardButton" disable="enable" onclick="var qr = document.getElementById('QR'); if (qr.style.display === 'none') {qr.style.display='block';} else {qr.style.display='none'}">
+    <span>打赏</span>
+  </button>
+  <div id="QR" style="display: none;">
+
+    
+      <div id="wechat" style="display: inline-block">
+        <img id="wechat_qr" src="/images/wechat.jpg" alt="wangxin201492 微信支付"/>
+        <p>微信支付</p>
+      </div>
+    
+
+    
+      <div id="alipay" style="display: inline-block">
+        <img id="alipay_qr" src="/images/alipay.jpg" alt="wangxin201492 支付宝"/>
+        <p>支付宝</p>
+      </div>
+    
+
+    
+
+  </div>
+</div>
+
+      </div>
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/MongoDB-OTT/" rel="tag"># MongoDB-OTT</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/linux/linux-subsys-IO/linux-io-overview/" rel="next" title="Linux IO子系统">
+                <i class="fa fa-chevron-left"></i> Linux IO子系统
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/MongoDB/command/serverStatus/MongoDB-serverStatus-implement/" rel="prev" title="MongoDB serverStatus实现原理">
+                MongoDB serverStatus实现原理 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <p class="site-author-name" itemprop="name">wangxin201492</p>
+              <p class="site-description motion-element" itemprop="description">my blogs</p>
+          </div>
+
+          <nav class="site-state motion-element">
+
+            
+              <div class="site-state-item site-state-posts">
+              
+                <a href="/archives/">
+              
+                  <span class="site-state-item-count">23</span>
+                  <span class="site-state-item-name">日志</span>
+                </a>
+              </div>
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-categories">
+                <a href="/categories/index.html">
+                  <span class="site-state-item-count">22</span>
+                  <span class="site-state-item-name">分类</span>
+                </a>
+              </div>
+            
+
+            
+              
+              
+              <div class="site-state-item site-state-tags">
+                <a href="/tags/index.html">
+                  <span class="site-state-item-count">22</span>
+                  <span class="site-state-item-name">标签</span>
+                </a>
+              </div>
+            
+
+          </nav>
+
+          
+
+          
+            <div class="links-of-author motion-element">
+                
+                  <span class="links-of-author-item">
+                    <a href="https://github.com/wangxin201492" target="_blank" title="GitHub">
+                      
+                        <i class="fa fa-fw fa-github"></i>GitHub</a>
+                  </span>
+                
+                  <span class="links-of-author-item">
+                    <a href="mailto:wangxin201492@sina.com" target="_blank" title="E-Mail">
+                      
+                        <i class="fa fa-fw fa-envelope"></i>E-Mail</a>
+                  </span>
+                
+            </div>
+          
+
+          
+          
+
+          
+          
+
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#分布式锁原理"><span class="nav-number">1.</span> <span class="nav-text">分布式锁原理</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-config-lockpings-和-config-locks-集合中存储的内容"><span class="nav-number">1.1.</span> <span class="nav-text">1. config.lockpings 和 config.locks 集合中存储的内容</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#config-lockpings"><span class="nav-number">1.1.1.</span> <span class="nav-text">config.lockpings</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#config-locks"><span class="nav-number">1.1.2.</span> <span class="nav-text">config.locks</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-与-config-lockpings-和-config-locks-的基本交互"><span class="nav-number">1.2.</span> <span class="nav-text">2. 与 config.lockpings 和 config.locks 的基本交互</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-分布式锁获取逻辑"><span class="nav-number">1.3.</span> <span class="nav-text">3. 分布式锁获取逻辑</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-加锁的场景"><span class="nav-number">1.4.</span> <span class="nav-text">4. 加锁的场景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-解锁场景"><span class="nav-number">1.5.</span> <span class="nav-text">5. 解锁场景</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#分布式锁代码解析"><span class="nav-number">2.</span> <span class="nav-text">分布式锁代码解析</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-核心类说明"><span class="nav-number">2.1.</span> <span class="nav-text">1. 核心类说明</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#DistLockCatalogImpl-DistLockCatalog-对分布式锁的一些具体操作"><span class="nav-number">2.1.1.</span> <span class="nav-text">DistLockCatalogImpl : DistLockCatalog : 对分布式锁的一些具体操作</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#ReplSetDistLockManager-DistLockManager-分布式锁的一些接口，主要封装DistLockCatalogImpl而实现"><span class="nav-number">2.1.2.</span> <span class="nav-text">ReplSetDistLockManager : DistLockManager : 分布式锁的一些接口，主要封装DistLockCatalogImpl而实现</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-初始化"><span class="nav-number">2.2.</span> <span class="nav-text">2. 初始化</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-replSetDistLockPinger线程"><span class="nav-number">2.3.</span> <span class="nav-text">3. replSetDistLockPinger线程</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#线程启动"><span class="nav-number">2.3.1.</span> <span class="nav-text">线程启动</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#线程逻辑-doTask"><span class="nav-number">2.3.2.</span> <span class="nav-text">线程逻辑 : doTask</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-触发分布式锁的场景"><span class="nav-number">2.4.</span> <span class="nav-text">4. 触发分布式锁的场景</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#collection-操作"><span class="nav-number">2.4.1.</span> <span class="nav-text">collection 操作</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#database-操作"><span class="nav-number">2.4.2.</span> <span class="nav-text">database 操作</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#chunk-操作"><span class="nav-number">2.4.3.</span> <span class="nav-text">chunk 操作</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#map-reduce操作"><span class="nav-number">2.4.4.</span> <span class="nav-text">map-reduce操作</span></a></li></ol></li></ol></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; 2020 &mdash; <span itemprop="copyrightYear">2021</span>
+  <span class="with-love">
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">wangxin201492</span>
+
+  
+</div>
+
+
+  <div class="powered-by">由 <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a> 强力驱动</div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">主题 &mdash; <a class="theme-link" target="_blank" href="https://github.com/iissnan/hexo-theme-next">NexT.Pisces</a> v5.1.4</div>
+
+
+
+
+
+  <script src='https://unpkg.com/mermaid@7.1.2/dist/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize("");
+    }
+  </script>
+
+
+        
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/fastclick/lib/fastclick.min.js?v=1.0.6"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery_lazyload/jquery.lazyload.js?v=1.9.7"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/fancybox/source/jquery.fancybox.pack.js?v=2.1.5"></script>
+  
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=5.1.4"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=5.1.4"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=5.1.4"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=5.1.4"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.1.4"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.1.4"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=5.1.4"></script>
+
+
+
+  
+
+
+  
+
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>

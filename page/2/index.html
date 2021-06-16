@@ -1807,6 +1807,428 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/MongoDB/sharding/DiskLock/MongoDB-sharding-DiskLock/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="wangxin201492">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wangxin201492">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/MongoDB/sharding/DiskLock/MongoDB-sharding-DiskLock/" itemprop="url">MongoDB sharding中分布式锁机制</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2020-03-24T19:11:00+08:00">
+                2020-03-24
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+            <span class="post-category" >
+            
+              <span class="post-meta-divider">|</span>
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">分类于</span>
+              
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/" itemprop="url" rel="index">
+                    <span itemprop="name">MongoDB</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/" itemprop="url" rel="index">
+                    <span itemprop="name">sharding</span>
+                  </a>
+                </span>
+
+                
+                
+                  ， 
+                
+              
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/MongoDB/sharding/DiskLock/" itemprop="url" rel="index">
+                    <span itemprop="name">DiskLock</span>
+                  </a>
+                </span>
+
+                
+                
+              
+            </span>
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p>[TOC]</p>
+<p>sharding实例在 createCollection/dropCollection 等场景下，为了规避并发问题引入了分布式锁机制。分布式锁的信息记录在 <a href="https://docs.mongodb.com/manual/reference/config-database/index.html#config.locks" target="_blank" rel="noopener"><code>config.locks</code></a>  集合中，结合 <a href="https://docs.mongodb.com/manual/reference/config-database/index.html#config.lockpings" target="_blank" rel="noopener"><code>config.lockpings</code></a> 中的信息来完成相关逻辑实现。</p>
+<h2 id="分布式锁原理"><a href="#分布式锁原理" class="headerlink" title="分布式锁原理"></a>分布式锁原理</h2><h3 id="1-config-lockpings-和-config-locks-集合中存储的内容"><a href="#1-config-lockpings-和-config-locks-集合中存储的内容" class="headerlink" title="1. config.lockpings 和 config.locks 集合中存储的内容"></a>1. <code>config.lockpings</code> 和 <code>config.locks</code> 集合中存储的内容</h3><h4 id="config-lockpings"><a href="#config-lockpings" class="headerlink" title="config.lockpings"></a>config.lockpings</h4><p><a href="https://docs.mongodb.com/manual/reference/config-database/index.html#config.lockpings" target="_blank" rel="noopener"><code>config.lockpings</code></a> 集合跟踪记录分片集群中所有活跃的组件。</p>
+<p>如果一个 mongos 运行在 example.com:30000 ，那么 <code>config.lockpings</code> 关于这个mongos的记录是这个样子的</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">&#123; </span><br><span class="line">	<span class="attr">"_id"</span> : <span class="string">"example.com:30000:1350047994:16807"</span>, <span class="comment">// 记录组件的标识， mongos 和 shard 节点均需要定期和 config 节点保持心跳</span></span><br><span class="line">	<span class="attr">"ping"</span> : ISODate(<span class="string">"2020-07-12T18:32:54.892Z"</span>) <span class="comment">// 组件定期与 `lockpings` 集合保持心跳，即更新 `ping` 字段</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p><code>_id</code> 字段内部称为 <code>processID</code> 。<code>processID</code> 对于 config 节点固定为”ConfigServer”；对于 mongos / shard 节点，则是以”:”分隔的四段信息分别为：hostname / port / timestamp / 随机int64值。该4项信息在进程启动时即已决定，进程存活期间不会被修改。</p>
+</blockquote>
+<h4 id="config-locks"><a href="#config-locks" class="headerlink" title="config.locks"></a>config.locks</h4><p><a href="https://docs.mongodb.com/manual/reference/config-database/index.html#config.locks" target="_blank" rel="noopener"><code>config.locks</code></a> 集合存储了分布式锁信息。</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">   <span class="attr">"_id"</span> : <span class="string">"test.myShardedCollection"</span>, <span class="comment">// 锁的名称，下文简称 lockName。对 database 或者 namespace 的部分场景操作需要获取分布式锁，所以一般 database 或者 namespace</span></span><br><span class="line">   <span class="attr">"state"</span> : <span class="number">2</span>, <span class="comment">// 锁的状态。0 表示 UNLOCKED，2 表示 LOCKED，1 表示 LOCK_PREP（仅对老版本3个config节点，目前代码中已无相关逻辑）</span></span><br><span class="line">   <span class="attr">"process"</span> : <span class="string">"ConfigServer"</span>, <span class="comment">// 即 processID。与上文讲到的 config.lockpings 集合中 _id 字段的取值是一样的</span></span><br><span class="line">   <span class="attr">"ts"</span> : ObjectId(<span class="string">"5be0b9ede46e4f441a60d891"</span>), <span class="comment">// 锁ID，下文简称 lockID。每次尝试获取分布式锁时的 锁ID 都是独有的。</span></span><br><span class="line">   <span class="attr">"when"</span> : ISODate(<span class="string">"2020-07-12T21:52:00.846Z"</span>), <span class="comment">// 获取锁的时间</span></span><br><span class="line">   <span class="attr">"who"</span> : <span class="string">"ConfigServer:Balancer"</span>, <span class="comment">// 获取锁的角色。  以":"分隔，第一段与 process字段 相同， 第二段 进程获取锁的线程名称。 ConfigServer:Balancer 表示 config进程的Balancer线程</span></span><br><span class="line">   <span class="attr">"why"</span> : <span class="string">"Migrating chunk(s) in collection test.myShardedCollection"</span> <span class="comment">// 获取锁的原因</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<blockquote>
+<p><code>_id</code> 下文简称 <code>lockName</code>, <code>process</code> 下文简称 <code>processID</code>，<code>ts</code> 下文简称 <code>lockID</code></p>
+</blockquote>
+<h3 id="2-与-config-lockpings-和-config-locks-的基本交互"><a href="#2-与-config-lockpings-和-config-locks-的基本交互" class="headerlink" title="2. 与 config.lockpings 和 config.locks 的基本交互"></a>2. 与 <code>config.lockpings</code> 和 <code>config.locks</code> 的基本交互</h3><blockquote>
+<p> 与上述2个集合的基础交互（<code>DistLockCatalog</code> 提供了与上述2个集合的基础交互动作，而 <code>DistLockCatalogImpl</code> 则是接口的具体实现）</p>
+</blockquote>
+<p><strong>与 <code>config.lockpings</code> 的交互有 3 种场景：</strong></p>
+<ul>
+<li><code>replSetDistLockPinger</code> 线程每隔 30s 通过一个 <code>upsert: true</code> 的 <code>findAndModify</code> 请求更新ping字段</li>
+<li>系统 shutdown 时，会构造一个 <code>update: {}</code> 的 <code>findAndModify</code> 请求清理掉对应的document</li>
+<li>此外在尝试获取分布式锁时，会获取对应组件上次心跳的时间，基于此判断组件是否已经丢失心跳，进而判断是否需要抢占锁</li>
+</ul>
+<p>与 <code>config.locks</code> 交互便是我们关心的分布式锁交互过程：</p>
+<ul>
+<li>组件获取到分布式锁有2种方式：<ul>
+<li><code>grabLock</code> : <strong>没有期望的 <code>lockName</code> 记录</strong>或者<strong>有期望的 <code>lockName</code> 记录且 <code>state = 0(UNLOCKED)</code></strong> ，通过更新 <code>state = 2(LOCKED)</code>, 同时更新<code>processID</code>/<code>lockID</code>/<code>who</code>/<code>when</code>/<code>why</code>字段的方式获取锁</li>
+<li><code>overtakeLock</code> : 对于*<em>期望 <code>lockName</code>记录，其 <code>state = 0(UNLOCKED)</code> 或者 <code>lockID = oldTS</code> *</em>，通过更新 <code>state = 2(LOCKED)</code>、更新 <code>lockID = newTS</code>、更新<code>processID</code>/<code>who</code>/<code>when</code>/<code>why</code>字段的方式抢占锁</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-分布式锁获取逻辑"><a href="#3-分布式锁获取逻辑" class="headerlink" title="3. 分布式锁获取逻辑"></a>3. 分布式锁获取逻辑</h3><blockquote>
+<p>主要是通过 <code>ReplSetDistLockManager::lockWithSessionID()</code> 来完成的</p>
+</blockquote>
+<ol>
+<li>在预期情况下，应不存在对应的锁或者锁的状态应该是 <code>UNLOCKED</code>。所以首先通过 <code>grabLock</code> 的方式来获取锁</li>
+<li>如通过 <code>grabLock</code> 获取失败，则说明可能存在锁竞争的情况。则通过锁的名称来获取目前 <code>config.locks</code> 集合中记录的对应锁的信息</li>
+<li>基于锁的信息来判断：如果 <strong>当前记录的分布式锁已经超时</strong> 或者 <strong>其对应的 processID 为当前请求的processID</strong>， 则通过 <code>overtakeLock</code> 的方式抢占锁<ol>
+<li>当前记录的分布式锁已经超时：<code>ReplSetDistLockManager</code> 内部维护一个 <code>_pingHistory</code> 用于协助判断 <code>config.locks</code> 中记录的锁是否超时。<code>_pingHistory</code> 中记录了 <code>processID</code>/<code>pingValue</code>/<code>config节点的serverTime</code>/<code>lockID</code>/<code>config节点的electionId</code>。<ol>
+<li>无法在 <code>config.lockpings</code> 集合中找到对应组件的心跳记录，则认为<strong>锁未超时</strong></li>
+<li>如果 <code>_pingHistory</code> 中不存在对应 <code>lockName</code> 的记录，则认为<strong>锁未超时</strong>，并将相关结果记录到 <code>_pingHistor</code>中</li>
+<li>如果与 <code>_pingHistory</code> 中记录相比，<strong>锁的持有者心跳正常(<code>pingValue</code>字段持续更新)</strong> 或者 <strong>锁的<code>lockID</code>发生变化</strong> 或者 <strong>config发生主节点变更(<code>electionId</code>发生变化)</strong> 则认为<strong>锁未超时</strong>，同时将相关结果记录到 <code>_pingHistory</code> 便于下次对比</li>
+<li>最后，如果上述情况都没有发生，而 <code>_pingHistory</code> 中记录的 <code>config节点的serverTime</code> 时间与当前时间超过 15min，则认为<strong>锁已经超时</strong></li>
+</ol>
+</li>
+<li>锁的信息中对应的 <code>ts</code> 为当前请求的<code>ts</code></li>
+</ol>
+</li>
+<li>如上述操作均失败，则等待后重新执行上述操作。直到超出指定的等待时间（<code>waitFor</code>）则返回<code>LockBusy</code></li>
+</ol>
+<p>借助简要代码看下：</p>
+<blockquote>
+<p>入参中：<code>name</code> 为锁的名称（即 <code>_id</code> 字段），<code>lockSessionID</code> 为获取锁唯一的锁ID（即 <code>ts</code> 字段），<code>waitFor</code> 为预期等待锁的时间。</p>
+</blockquote>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">StatusWith&lt;DistLockHandle&gt; <span class="title">ReplSetDistLockManager::lockWithSessionID</span><span class="params">(OperationContext* opCtx,</span></span></span><br><span class="line"><span class="function"><span class="params">                                                                     StringData name,</span></span></span><br><span class="line"><span class="function"><span class="params">                                                                     StringData whyMessage,</span></span></span><br><span class="line"><span class="function"><span class="params">                                                                     <span class="keyword">const</span> OID&amp; lockSessionID,</span></span></span><br><span class="line"><span class="function"><span class="params">                                                                     Milliseconds waitFor)</span> </span>&#123;</span><br><span class="line">    ...</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Distributed lock acquisition works by tring to update the state of the lock to 'taken'. If</span></span><br><span class="line">    <span class="comment">// the lock is currently taken, we will back off and try the acquisition again, repeating this</span></span><br><span class="line">    <span class="comment">// until the lockTryInterval has been reached. If a network error occurs at each lock</span></span><br><span class="line">    <span class="comment">// acquisition attempt, the lock acquisition will be retried immediately.</span></span><br><span class="line">    <span class="keyword">while</span> (waitFor &lt;= Milliseconds::zero() || Milliseconds(timer.<span class="built_in">millis</span>()) &lt; waitFor) &#123;</span><br><span class="line">        ...</span><br><span class="line"></span><br><span class="line">        <span class="keyword">auto</span> lockResult = _catalog-&gt;grabLock(</span><br><span class="line">            opCtx, name, lockSessionID, who, _processID, Date_t::now(), whyMessage.toString());</span><br><span class="line"></span><br><span class="line">        <span class="keyword">auto</span> status = lockResult.getStatus();</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (status.isOK()) &#123;</span><br><span class="line">            ...</span><br><span class="line">            <span class="keyword">return</span> lockSessionID;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// Get info from current lock and check if we can overtake it.</span></span><br><span class="line">        <span class="keyword">auto</span> getLockStatusResult = _catalog-&gt;getLockByName(opCtx, name);</span><br><span class="line">        <span class="keyword">const</span> <span class="keyword">auto</span>&amp; getLockStatus = getLockStatusResult.getStatus();</span><br><span class="line">        ...</span><br><span class="line"></span><br><span class="line">        <span class="comment">// Note: Only attempt to overtake locks that actually exists. If lock was not</span></span><br><span class="line">        <span class="comment">// found, use the normal grab lock path to acquire it.</span></span><br><span class="line">        <span class="keyword">if</span> (getLockStatusResult.isOK()) &#123;</span><br><span class="line">            <span class="keyword">auto</span> currentLock = getLockStatusResult.getValue();</span><br><span class="line">            <span class="keyword">auto</span> isLockExpiredResult = isLockExpired(opCtx, currentLock, lockExpiration);</span><br><span class="line"></span><br><span class="line">            <span class="keyword">if</span> (isLockExpiredResult.getValue() || (lockSessionID == currentLock.getLockID())) &#123;</span><br><span class="line">                <span class="keyword">auto</span> overtakeResult = _catalog-&gt;overtakeLock(xxx);</span><br><span class="line">                ...</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        ...</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (waitFor == Milliseconds::zero()) &#123;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">const</span> Milliseconds timeRemaining = <span class="built_in">std</span>::<span class="built_in">max</span>(Milliseconds::zero(), waitFor - Milliseconds(timer.<span class="built_in">millis</span>()));</span><br><span class="line">        sleepFor(<span class="built_in">std</span>::<span class="built_in">min</span>(kLockRetryInterval, timeRemaining));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> &#123;ErrorCodes::LockBusy, str::stream() &lt;&lt; <span class="string">"timed out waiting for "</span> &lt;&lt; name&#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="4-加锁的场景"><a href="#4-加锁的场景" class="headerlink" title="4. 加锁的场景"></a>4. 加锁的场景</h3><ul>
+<li><p>collectin操作：<code>createCollection</code> / <code>dropCollection</code> / <code>shardCollection</code> 会同时对 collection 的 <strong>namespace</strong> 和 <strong>database</strong> 加锁</p>
+</li>
+<li><p>database操作：<code>movePrimary</code> / <code>enableSharding</code> / <code>createDatabase</code> / <code>dropDatabase</code> 时会对 <strong>database</strong> 加锁，<code>dropDatabase</code> 还会依次对 db 下所有的 <strong>collection</strong> 加锁(<code>dropCollection</code>)</p>
+</li>
+<li><p>chunk操作：Migrating chunk(s) in collection / merging chunks / splitting chunk</p>
+</li>
+<li><p>map-reduce操作：mr-post-process</p>
+</li>
+</ul>
+<h3 id="5-解锁场景"><a href="#5-解锁场景" class="headerlink" title="5. 解锁场景"></a>5. 解锁场景</h3><ul>
+<li>一般情况在需要获取分布式锁的场景下，获取分布式锁成功会获得到一个 <code>DistLockManager::ScopedDistLock</code> 的对象，并在锁使用完成后触发该对象的析构函数，释放锁（修改state=UNLOCKED）。</li>
+<li>另外如果 <code>grabLock</code> 时，如果获取失败返回异常是由于 config节点 状态异常导致，那么也会进行 <code>unlock</code> 方便下次可以直接 <code>grabLock</code> 完成加锁。</li>
+<li>MigrationManager 一些场景触发 // TODO</li>
+<li>如果<strong>在上述任何场景触发的unlock失败</strong> 或者 <strong>一些操作导致锁的状态未知</strong> 后，都会加入到 <code>_unlockList</code> 队列，在 <code>replSetDistLockPinger</code> 定期执行时也会重新进行 unlock 操作</li>
+</ul>
+<hr>
+<h2 id="分布式锁代码解析"><a href="#分布式锁代码解析" class="headerlink" title="分布式锁代码解析"></a>分布式锁代码解析</h2><h3 id="1-核心类说明"><a href="#1-核心类说明" class="headerlink" title="1. 核心类说明"></a>1. 核心类说明</h3><h4 id="DistLockCatalogImpl-DistLockCatalog-对分布式锁的一些具体操作"><a href="#DistLockCatalogImpl-DistLockCatalog-对分布式锁的一些具体操作" class="headerlink" title="DistLockCatalogImpl : DistLockCatalog : 对分布式锁的一些具体操作"></a><code>DistLockCatalogImpl : DistLockCatalog</code> : 对分布式锁的一些具体操作</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;**</span><br><span class="line"> * Interface for the distributed lock operations.</span><br><span class="line"> *&#x2F;</span><br><span class="line">class DistLockCatalog &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>对config.lockpings的基础操作：ping/getPing/stopPing</li>
+<li>获取分布式锁or config的信息：getServerInfo/getLockByTS/getLockByname</li>
+<li>对锁的操作(config.locks)：grabLock/overtakeLock/unlock/unlockAll</li>
+</ol>
+<p>其中<code>grabLock</code> 和 <code>overtakeLock</code> 是两个核心的获取锁的方法：</p>
+<ol>
+<li><code>grabLock</code> : 将<code>lockID</code>的锁更新为指定的<code>lockSessionID</code></li>
+<li><code>overtakeLock</code> : 强制将锁的持有者从<code>currentHolderTS</code>更改为<code>lockSessionID</code></li>
+</ol>
+<h4 id="ReplSetDistLockManager-DistLockManager-分布式锁的一些接口，主要封装DistLockCatalogImpl而实现"><a href="#ReplSetDistLockManager-DistLockManager-分布式锁的一些接口，主要封装DistLockCatalogImpl而实现" class="headerlink" title="ReplSetDistLockManager : DistLockManager : 分布式锁的一些接口，主要封装DistLockCatalogImpl而实现"></a><code>ReplSetDistLockManager : DistLockManager</code> : 分布式锁的一些接口，主要封装DistLockCatalogImpl而实现</h4><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;**</span><br><span class="line"> * Interface for handling distributed locks.</span><br><span class="line"> *</span><br><span class="line"> * Usage:</span><br><span class="line"> *</span><br><span class="line"> * auto scopedDistLock &#x3D; mgr-&gt;lock(...);</span><br><span class="line"> *</span><br><span class="line"> * if (!scopedDistLock.isOK()) &#123;</span><br><span class="line"> *   &#x2F;&#x2F; Did not get lock. scopedLockStatus destructor will not call unlock.</span><br><span class="line"> * &#125;</span><br><span class="line"> *</span><br><span class="line"> * &#x2F;&#x2F; To check if lock is still owned:</span><br><span class="line"> * auto status &#x3D; scopedDistLock.getValue().checkStatus();</span><br><span class="line"> *</span><br><span class="line"> * if (!status.isOK()) &#123;</span><br><span class="line"> *   &#x2F;&#x2F; Someone took over the lock! Unlock will still be called at destructor, but will</span><br><span class="line"> *   &#x2F;&#x2F; practically be a no-op since it doesn&#39;t own the lock anymore.</span><br><span class="line"> * &#125;</span><br><span class="line"> *&#x2F;</span><br><span class="line">class DistLockManager &#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>持有一个线程<code>replSetDistLockPinger</code>，用户定时与config.lockpings心跳，并对需要unlock的锁进行unlock</li>
+<li>提供对锁处理的一些方法：<ol>
+<li>加锁：lock/lockWithSessionID/tryLockWithLocalWriteConcern<ol>
+<li>lock通过调用lockWithSessionID来实现</li>
+</ol>
+</li>
+<li>解锁：unlock/unlockAll</li>
+</ol>
+</li>
+<li>持有一个内部类ScopedDistLock : 一个RAII风格的类，持有锁的基础信息</li>
+</ol>
+<h3 id="2-初始化"><a href="#2-初始化" class="headerlink" title="2. 初始化"></a>2. 初始化</h3><p><img src="https://wangxin201492.github.io/techImages/MongoDB-sharding-DiskLockManager.png" alt="MongoDB-sharding-DiskLockManager"></p>
+<p>mongos初始化时会生成一个与host、port、时间戳、随机值有关的一个<code>distLockProcessId</code>作为<code>ReplSetDistLockManager</code>的唯一标识，并在makeCatalogClient中完成对DistLockCatalogImpl、ReplSetDistLockManager、ShardingCatalogClientImpl的初始化</p>
+<ul>
+<li>DistLockCatalogImpl : 是<code>DistLockCatalog</code>的具体实现。默认初始化方法存储了<code>config.locks</code>，<code>config.lockpings</code>表名</li>
+<li>ReplSetDistLockManager : 是<code>DistLockManager</code>的具体实现。初始化方法存储了上面提到的<code>distLockProcessId</code>, <code>DistLockCatalog</code>并完成了<code>pingInterval</code>, <code>lockExpiration</code>的初始化，其中<code>pingInterval</code>默认为30s，<code>lockExpiration</code>默认为15min</li>
+<li>ShardingCatalogClientImpl : 是<code>ShardingCatalogClient</code>的具体实现。初始化方法存储了上面提到的<code>DistLockManager</code>。<em>(该类只提供了一个获取DistLockManager的方式及start、shutdown的方法，与DistLockManager无其他关系)</em></li>
+</ul>
+<p>然后将ShardingCatalogClientImpl作为一个数据成员存储在全局的Grid中</p>
+<h3 id="3-replSetDistLockPinger线程"><a href="#3-replSetDistLockPinger线程" class="headerlink" title="3. replSetDistLockPinger线程"></a>3. replSetDistLockPinger线程</h3><h4 id="线程启动"><a href="#线程启动" class="headerlink" title="线程启动"></a>线程启动</h4><p>grid初始化完成后，紧接着会调用<code>grid-&gt;catalogClient()-&gt;startup();</code>，该语句实际上最终调用到<code>ReplSetDistLockManager::startUp()</code>，启动一个replSetDistLockPinger线程，线程的具体执行在<code>ReplSetDistLockManager::doTask()</code>中</p>
+<h4 id="线程逻辑-doTask"><a href="#线程逻辑-doTask" class="headerlink" title="线程逻辑 : doTask"></a>线程逻辑 : doTask</h4><ol>
+<li>config.lockpings交互：调用DistLockCatalog::ping()，构造一个findAndModify请求根据processID更新ping字段(upsert=true)。并更新本地的elapsedSincelastPing，如果与上次ping时间超过_pingInterval*10 则打印warning日志</li>
+<li>unlock：遍历本地的 <code>_unlockList</code> ，对需要unlock的锁调用DistLockCatalog::unlock()。如果返回失败则打印warning日志并重新加入_unlockList中</li>
+<li>sleep _pingInterval 即15s</li>
+</ol>
+<h3 id="4-触发分布式锁的场景"><a href="#4-触发分布式锁的场景" class="headerlink" title="4. 触发分布式锁的场景"></a>4. 触发分布式锁的场景</h3><ul>
+<li>chunk操作：Migrating chunk(s) in collection / merging chunks / splitting chunk</li>
+<li>db or collection操作：movePrimary/enableSharding/dropCollection …</li>
+<li>map-reduce操作：mr-post-process</li>
+</ul>
+<h4 id="collection-操作"><a href="#collection-操作" class="headerlink" title="collection 操作"></a>collection 操作</h4><table>
+<thead>
+<tr>
+<th>whyMessage</th>
+<th>_id</th>
+<th>function</th>
+<th>file</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>“createCollection”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_create_collection_command.cpp</td>
+</tr>
+<tr>
+<td>“createCollection”</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_create_collection_command.cpp</td>
+</tr>
+<tr>
+<td>“dropCollection”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_drop_collection_command.cpp</td>
+</tr>
+<tr>
+<td>“dropCollection”</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_drop_collection_command.cpp</td>
+</tr>
+<tr>
+<td>“shardCollection”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_shard_collection_command.cpp</td>
+</tr>
+<tr>
+<td>“shardCollection”</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_shard_collection_command.cpp</td>
+</tr>
+</tbody></table>
+<h4 id="database-操作"><a href="#database-操作" class="headerlink" title="database 操作"></a>database 操作</h4><table>
+<thead>
+<tr>
+<th>whyMessage</th>
+<th>_id</th>
+<th>function</th>
+<th>file</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>“movePrimary”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_move_primary_command.cpp</td>
+</tr>
+<tr>
+<td>“enableSharding”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_enable_sharding_command.cpp</td>
+</tr>
+<tr>
+<td>“createDatabase”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_create_database_command.cpp</td>
+</tr>
+<tr>
+<td>“dropDatabase”</td>
+<td>database</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_drop_database_command.cpp</td>
+</tr>
+<tr>
+<td>“dropCollection”</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/config/configsvr_drop_database_command.cpp</td>
+</tr>
+</tbody></table>
+<h4 id="chunk-操作"><a href="#chunk-操作" class="headerlink" title="chunk 操作"></a>chunk 操作</h4><table>
+<thead>
+<tr>
+<th>whyMessage</th>
+<th>_id</th>
+<th>function</th>
+<th>file</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>“splitting chunk “ &lt;&lt; chunkRange.toString() &lt;&lt; “ in “ &lt;&lt; nss.toString()</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/split_chunk.cpp</td>
+</tr>
+<tr>
+<td>“merging chunks in “ &lt;&lt; nss.ns() &lt;&lt; “ from “ &lt;&lt; minKey &lt;&lt; “ to “ &lt;&lt; maxKey</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/db/s/merge_chunks_command.cpp</td>
+</tr>
+<tr>
+<td>“Migrating chunk(s) in collection “ &lt;&lt; migrateType.getNss().ns())</td>
+<td>namespace</td>
+<td>tryLockWithLocalWriteConcern</td>
+<td>src/mongo/db/s/balancer/migration_manager.cpp</td>
+</tr>
+<tr>
+<td>“Migrating chunk(s) in collection “ &lt;&lt; nss.ns()</td>
+<td>namespace</td>
+<td>lockWithSessionID</td>
+<td>src/mongo/db/s/balancer/migration_manager.cpp</td>
+</tr>
+</tbody></table>
+<h4 id="map-reduce操作"><a href="#map-reduce操作" class="headerlink" title="map-reduce操作"></a>map-reduce操作</h4><table>
+<thead>
+<tr>
+<th>whyMessage</th>
+<th>_id</th>
+<th>function</th>
+<th>file</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>“mr-post-process”</td>
+<td>namespace</td>
+<td>lock</td>
+<td>src/mongo/s/commands/cluster_map_reduce_cmd.cpp</td>
+</tr>
+</tbody></table>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/linux/linux-subsys-IO/linux-io-overview/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -2755,250 +3177,6 @@
 
 
     
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="https://wangxin201492.github.io/shell/shell-find/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="wangxin201492">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="wangxin201492">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/shell/shell-find/" itemprop="url">【shell】再看一眼find--find使用中遇到的问题分析</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2015-08-15T20:01:48+08:00">
-                2015-08-15
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-            <span class="post-category" >
-            
-              <span class="post-meta-divider">|</span>
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-folder-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">分类于</span>
-              
-              
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/shell/" itemprop="url" rel="index">
-                    <span itemprop="name">shell</span>
-                  </a>
-                </span>
-
-                
-                
-              
-            </span>
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <h2 id="1-简单find命令"><a href="#1-简单find命令" class="headerlink" title="1 简单find命令"></a>1 简单find命令</h2><h3 id="1-1-目录结构"><a href="#1-1-目录结构" class="headerlink" title="1.1 目录结构"></a>1.1 目录结构</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">代码1</span><br><span class="line">$ tree</span><br><span class="line">.</span><br><span class="line">|-- 2.log</span><br><span class="line">`-- backup</span><br><span class="line">    `-- 1.log</span><br><span class="line"></span><br><span class="line">3 directories, 0 files</span><br></pre></td></tr></table></figure>
-
-<h3 id="1-2-简单的find命令"><a href="#1-2-简单的find命令" class="headerlink" title="1.2 简单的find命令"></a>1.2 简单的find命令</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">代码2</span><br><span class="line">$ find -path ./backup</span><br><span class="line">./backup</span><br></pre></td></tr></table></figure>
-
-<h3 id="1-3-错误的通配符使用"><a href="#1-3-错误的通配符使用" class="headerlink" title="1.3 错误的通配符使用"></a>1.3 错误的通配符使用</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">代码3</span><br><span class="line">$ mkdir backup123</span><br><span class="line">$ find -path ./backup*</span><br><span class="line">find: paths must precede expression</span><br><span class="line">Usage: find [path...] [expression]</span><br></pre></td></tr></table></figure>
-
-<p><code>find</code>命令报错：路径必须先表达。问题分析（引自：<a href="http://www.cnblogs.com/baibaluo/archive/2012/08/16/2642403.html" target="_blank" rel="noopener">http://www.cnblogs.com/baibaluo/archive/2012/08/16/2642403.html</a>）:</p>
-<p>当目录下存在多个<code>backup*</code>，shell命令变成<code>find -path backup backup123</code>.此时，<code>-name</code>后面有2个匹配字符，shell报错。</p>
-<p><strong>解决办法</strong>：-path(-name)匹配的字符串已经要用单引号，或者双引号引住。</p>
-<h3 id="1-4-正确的通配符写法"><a href="#1-4-正确的通配符写法" class="headerlink" title="1.4 正确的通配符写法"></a>1.4 正确的通配符写法</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">代码4</span><br><span class="line">$ find -path <span class="string">'./backup*'</span></span><br><span class="line">./backup</span><br><span class="line">./backup/1.log</span><br><span class="line">./backup123</span><br></pre></td></tr></table></figure>
-
-<p>此时，命令运行正确！</p>
-<h2 id="2-find多条件"><a href="#2-find多条件" class="headerlink" title="2 find多条件"></a>2 find多条件</h2><p><code>expr1 expr2 -o expr3</code> 等同于 <code>expr1 -a expr2 -o expr3</code>.与其他语言中的<strong>与或非</strong>类似。并且是<strong>短路求值</strong></p>
-<h3 id="2-1-find多条件尝试-与"><a href="#2-1-find多条件尝试-与" class="headerlink" title="2.1 find多条件尝试:与"></a>2.1 find多条件尝试:与</h3><pre><code>代码5
-$ find -path ./backup -name &apos;*.log&apos;
-$</code></pre><p>没有任何返回结果。该语句的含义是：路径是path，并且名字是以.log结尾的文件。显然，并不存在。</p>
-<p>本语句实际上是想查找，backup下所有的以.log结尾的文件。应是：</p>
-<ol>
-<li><code>find -path &#39;./backup*&#39; -name &#39;*.log&#39;</code></li>
-</ol>
-<h3 id="2-2-find多条件尝试-或"><a href="#2-2-find多条件尝试-或" class="headerlink" title="2.2 find多条件尝试:或"></a>2.2 find多条件尝试:或</h3><pre><code>代码6
-$ find -path &apos;./backup*&apos; -o -name &apos;*.log&apos;
-./backup
-./backup/1.log
-./2.log
-./backup123</code></pre><p>到这个地方，<code>-a</code> 和 <code>-o</code>的体会已经一目了然了吧。这条命令展示了在backup*下的所有文件和以.log结尾的所有文件。</p>
-<h2 id="3-prune的体会"><a href="#3-prune的体会" class="headerlink" title="3 -prune的体会"></a>3 <code>-prune</code>的体会</h2><p>贴上这样的几条<code>shell</code>命令，请先自行体会：</p>
-<pre><code>代码7
-$ find -path &apos;./backup*&apos;
-./backup
-./backup/1.log
-./backup123
-$ find -path &apos;./backup*&apos; -prune
-./backup
-./backup123</code></pre><h3 id="3-1-prune的基本使用"><a href="#3-1-prune的基本使用" class="headerlink" title="3.1 prune的基本使用"></a>3.1 <code>prune</code>的基本使用</h3><p><code>-prune</code>在man中是这么说的</p>
-<blockquote>
-<p>If -depth is not given, true; do not descend the current directory.<br>If -depth is given, false; no effect.</p>
-</blockquote>
-<p>如果<code>find</code>语句中存在-depth选项，那么<code>-prune</code>将会被忽略。否则，<code>-prune</code>将声明不展开当前路径。</p>
-<p>这样在上述的1、2条命令中，由于<code>-prune</code>选项的存在，致使backup路径没有展开。所以1.log没有在打印列表中。</p>
-<p>我们再次做这样的尝试：</p>
-<pre><code>代码8
-$ touch backup123/3.log
-$ find -path &apos;./backup*&apos; -prune
-./backup
-./backup123
-$ find -path &apos;./backup*&apos;
-./backup
-./backup/1.log
-./backup123
-./backup123/3.log</code></pre><p>打印的结果和预期是一样的。</p>
-<p>按照上述<strong>2 find多条件</strong>中说道的那样，<code>find -path &#39;./backup*&#39;</code>获得所有backup前缀的文件，然后将结果和<code>-prune</code>相<code>与</code>：其实就是判断前者的结果中是否包含<strong>指定路径</strong>的子文件(夹)。</p>
-<h3 id="3-2-prune做排除路径用"><a href="#3-2-prune做排除路径用" class="headerlink" title="3.2 prune做排除路径用"></a>3.2 <code>prune</code>做排除路径用</h3><p>而一般情况下<code>prune</code>是这样使用的</p>
-<pre><code>代码9
-$ find -path &apos;./backup*&apos; -prune -o -name &apos;*.log&apos; -print
-./2.log</code></pre><p>指代的意思是当前路径除去<code>backup*</code>文件夹外的所有<code>*.log</code>文件。</p>
-<h4 id="3-2-1-一个问题"><a href="#3-2-1-一个问题" class="headerlink" title="3.2.1 一个问题"></a>3.2.1 一个问题</h4><p>这样是如愿以偿了，但是我们执行一下这样的一条命令：</p>
-<pre><code>代码10
-$ find -path &apos;./backup*&apos; -o -name &apos;*.log&apos; -print
-./2.log</code></pre><p>返回的结果一模一样。</p>
-<h4 id="3-2-2-进一步剖析"><a href="#3-2-2-进一步剖析" class="headerlink" title="3.2.2 进一步剖析"></a>3.2.2 进一步剖析</h4><p>这个问题我们暂且搁置不论，继续来看这样的2个命令：</p>
-<pre><code>代码11
-$ find -path &apos;./backup*&apos; -prune -o -name &apos;*.log&apos;
-./backup
-./2.log
-./backup123
-$ find -path &apos;./backup*&apos;  -o -name &apos;*.log&apos;
-./backup
-./backup/1.log
-./2.log
-./backup123</code></pre><p>2个结果集中只是缺少了<code>./backup/1.log</code>，<code>-prune</code>做到的只是一个收缩路径的功能。</p>
-<p>再继续对比这2个命令和上面两个命令，缺少的是一个<code>-print</code>.其实在man里面有这样的一句话<strong>“If no expression is given, the expression ‘-print’ is used.”</strong></p>
-<p>也就是说<code>-print</code>是个默认值，那么上面2组命令实际上可以这样看待：</p>
-<table>
-<thead>
-<tr>
-<th align="center">输入命令</th>
-<th align="center">实际命令</th>
-</tr>
-</thead>
-<tbody><tr>
-<td align="center"><code>find -path &#39;./backup*&#39; -o -name &#39;*.log&#39;</code></td>
-<td align="center"><code>find \( -path &#39;./backup*&#39; -o -name &#39;*.log&#39; \) -print</code></td>
-</tr>
-<tr>
-<td align="center"><code>find -path &#39;./backup*&#39; -o -name &#39;*.log&#39; -print</code></td>
-<td align="center"><code>find \( -path &#39;./backup*&#39; \) -o \( -name &#39;*.log&#39; -print \)</code></td>
-</tr>
-</tbody></table>
-<p><strong>代码9</strong> 和 <strong>代码10</strong>中的片段可以理解为打印<code>-path &#39;./backup*&#39;</code>为false 、 <code>-name &#39;*.log&#39;</code> 为true的find结果。</p>
-<p>而<strong>代码11</strong>中的片段则是将<code>-path &#39;./backup*&#39; -o -name &#39;*.log&#39;</code>过滤后所有为true的结果都打印。</p>
-<h4 id="3-2-3-总结"><a href="#3-2-3-总结" class="headerlink" title="3.2.3 总结"></a>3.2.3 总结</h4><p>那么这样看来，其实排除路径其实是将<code>-print</code>放置到了-o后面作为输出。而<code>-path &#39;./backup*&#39;</code>执行过，并且返回true，单并未被打印。</p>
-<p>那么是不是说，其实，其实，其实<code>-prune</code>并没有什么用？</p>
-<h2 id="4-总结：多一点角度看find"><a href="#4-总结：多一点角度看find" class="headerlink" title="4 总结：多一点角度看find"></a>4 总结：多一点角度看find</h2><p>其实可以认为</p>
-<ol>
-<li>find无可避免的对指定路径进行了全文搜索，默认情况下是深度优先搜索(只有在指定-depth的时候使用广度优先搜索)。</li>
-<li>find进行全文搜索以后，将结果扔到后面的过滤条件中，按照<strong>与或非</strong>的规则，逐条过滤。</li>
-<li>最终返回值为true的item被打印了出来</li>
-</ol>
-<p>试想这样一个场景，在一个java项目中，由于项目庞大，总文件数上万。想要找到最深2级目录下所有的java文件。</p>
-<pre><code>find . -name &quot;*.java&quot; -maxdepth 2
-find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令，显然第二条的执行效率会快！！！<code>-maxdepth 2</code> 极大程度的进行了一次结果过滤。</p>
-<p>那么在写find命令的时候，应该把能最大程度减小结果集的结果放到前面。</p>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
   </section>
 
   
@@ -3049,7 +3227,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
                 <a href="/archives/">
               
-                  <span class="site-state-item-count">22</span>
+                  <span class="site-state-item-count">23</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
@@ -3060,7 +3238,7 @@ find . -maxdepth 2 -name &quot;*.java&quot;</code></pre><p>这样的2条命令�
               
               <div class="site-state-item site-state-categories">
                 <a href="/categories/index.html">
-                  <span class="site-state-item-count">21</span>
+                  <span class="site-state-item-count">22</span>
                   <span class="site-state-item-name">分类</span>
                 </a>
               </div>
