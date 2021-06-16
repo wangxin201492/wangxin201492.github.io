@@ -15,6 +15,8 @@ categories:
 
 [TOC]
 
+## ClusterTime
+
 ### clusterTime demo
 
 ```json
@@ -28,6 +30,12 @@ categories:
   }
 }
 ```
+
+
+
+1. `clusterTime`：实现因果一致性交互的基础，使请求存在因果序关系
+2. `afterClusterTime`：因果一致性，client如需要 read own write，需要将自己上次write时获得的 `operationTime` 添加到 请求的 `afterClusterTime` 中
+3. `operationTime`：请求交互过程中，服务端返回该请求执行时，oplog中最新的item对应的时间戳。
 
 
 
@@ -139,3 +147,33 @@ mongos&shardServer 收到 上游请求后，如果传递的 `clusterTime` 有效
 分片集群实例节点之间发生请求交互时，`LogicalTimeMetadata`会将当前节点已知的 clusterTime 添加到请求元信息中。
 
 mongos&shardServer收到上游请求后，`validate()` 后 会进行 `advanceClusterTime`。另外内部请求交互会使用 `LogicalTimeMetadataHook` ，交互完成后 该hook 也会进行 `advanceClusterTime`
+
+
+
+## ConfigTime (ConfigOpTime)
+
+4.2代码中更多使用 `ConfigOpTime`，而请求过程中使用的meta字段为 `$configServerState.opTime`
+
+Grid组件维护一个 `_configOpTime` 记录当前节点已知最新的 `ConfigOpTime`。
+
+`ConfigOpTime` 传播：在mongos、shardServer、configServer所有交互过程中，都会使用到 `ShardingEgressMetadataHook`，当收到请求时，会去主动的 `advanceConfigOpTime`。此外，当shardServer收到请求的时候，也会主动的 `advanceConfigOpTimeFromRequestMetadata`
+
+而 `ConfigOpTime` 的推进则是唯一在 configServer中进行的，当 configServer 与其他节点进行请求交互时，会从 `repl::ReplicationCoordinator::get(_serviceContext)->getCurrentCommittedSnapshotOpTime();` 来获取时间戳进行推进
+
+
+
+## TopologyTime
+
+`TopologyTime` 与分片的拓扑相关。只有当 shard增加或者删除的时候，才会tick `TopologyTime`：`_configsvrAddShard` / `_configsvrRemoveShard` 时会将 `TopologyTime` tick成 `ConfigTime`
+
+`TopologyTime` 用于 ShardRegistry 来确认何时刷新
+
+
+
+> ConfigTime & TopologyTime 在4.2中设计较少，应该是4.4 or 后续代码中的优化点
+
+ClusterTime >= ConfigTime >= TopologyTime
+
+## 参考
+
+https://github.com/mongodb/mongo/blob/master/src/mongo/db/s/README.md#vector-clock`

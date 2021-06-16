@@ -8,6 +8,8 @@ categories:
 - MongoDB
 ---
 
+
+
 sharding实例对后端 shard 会进行状态探测，以发现 shard 是否有节点更新（ 选主、节点加入、节点异常）。提供探测能力的核心类为 `ReplicaSetMonitor` 及相关类。
 
  
@@ -28,7 +30,7 @@ sharding实例对后端 shard 会进行状态探测，以发现 shard 是否有�
 
 ReplicaSetMonitor / SetState / Refresher / ScanState 具体关系参考下图：
 
-![MongoDB-ReplicaSetMonitor.png](https://wangxin201492.github.io/techImages/MongoDB-ReplicaSetMonitor.png)
+![MongoDB-ReplicaSetMonitor.png](MongoDB-ReplicaSetMonitor.png)
 
  
 
@@ -120,6 +122,11 @@ void ReplicaSetMonitor::_doScheduledRefresh(const CallbackHandle& currentHandle)
 
 ### 请求下发
 
+每一轮探测都会初始化一个新的 `ReplicaSetMonitor::Refresher`，随后在 `Refresher::startNewScan()` 中确定待探测的目标节点： `SetState` 的nodes中所有的节点。nodes中节点的确定方式：
+
+* 初始化时，为 `seedNodes` 节点。addShard 的过程中会将shard的信息更新到 `config.shards` 集合中，随后各节点 ShardRegistry 定期（每隔30s）从 `config.shards` 中拉取shard信息。如果是未知的shard，则会创建 shardRemote，期间会创建对应的 `ReplicaSetMonitor`，而 `config.shards` 中的链接信息就是 `seedNodes`
+* 初始化过后，nodes节点则为每次primary节点的isMaster命令返回的节点(hosts + passives)。
+
 `scheduleNetworkRequests` 通过 `getNextStep` 依次从 **hostsToScan** 拿到一个host信息，并将 host 信息插入到 **waitingFor** 及 **triedHosts** 这 2 个 set 中。然后针对这个 host 调用 `scheduleIsMaster` 
 
  
@@ -148,6 +155,7 @@ void ReplicaSetMonitor::_doScheduledRefresh(const CallbackHandle& currentHandle)
 
 - 有效性判断：判断 `configVersion` / `electionId` 的有效性
 - 状态存储：将 reply 的结果更新到 `SetState` 中。更新nodes / seedNodes / seedConnStr / workingConnstr
+  - nodes = reply中 hosts + passives，如果发生节点变化或者primary变化，则更新seedNodes = nodes
 - 清理`ScanState` 中记录的信息：**triedHost** / **waiitingFor** / **unconfirmedReplies**
 - 如果 primary 有变化，则会通知所有的 listener 状态变更。
 
@@ -165,4 +173,38 @@ void ReplicaSetMonitor::_doScheduledRefresh(const CallbackHandle& currentHandle)
 
 `ReplicaSetMonitorManager` 是负责 `ReplicaSetMonitor` 的管理类，维护一个 map 结构 （记录 setName 和 `ReplicaSetMonitor`），一个`TaskExecutor` 用于所有 `ReplicaSetMonitor` 命令执行，以及一个`ReplicaSetChangeNotifier`
 
- 
+
+
+## Questions
+
+### Unable to reach primary for set
+
+在进行 shard 整体迁移的时候，可能遇到该报错。原因是默认情况下 isMaster 探测的时间间隔是30s，而如果这30s之间，将shard的非hidden节点全部更换（下发isMaster的目标节点都不在当前replSet中），那么就无法探测到拓扑信息，进而导致 无法reach primary
+
+```shell
+#!/bin/bash
+
+# reproduce step:
+# 1. initial replSet has 3 members: IPADDR:8220 is primary, IPADDR:8221 is secondary, IPADDR:8222 is hidden
+# 2. rs.remove("IPADDR:8221") manual
+# 3. check mongos log : Updating ShardRegistry connection string for shard shard8220 from: shard8220/IPADDR:8220,IPADDR:8221 to: shard8220/IPADDR:8220
+# 4. run this script immediately
+mongo --host IPADDR --port 8220 --eval '
+    var conf = rs.config();
+    printjson(conf);
+    conf.members[1].priority = 1;
+    conf.members[1].hidden = false;
+    printjson(conf);
+    rs.reconfig(conf);
+    rs.stepDown();
+'
+
+echo -e "\n\n\n"
+
+mongo --host IPADDR --port 8222 --eval '
+    rs.config();
+    rs.remove("IPADDR:8220");
+    rs.config();
+'
+```
+
