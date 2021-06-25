@@ -2,6 +2,10 @@
 title: MongoDB sharding实例 各类型节点(mongos/shard/config)如何管理集群状态
 date: 2020-07-17 16:36:01
 tags:
+- MongoDB-OTT
+categories:
+- MongoDB
+- sharding
 ---
 
 > 本文结合MongoDB4.2代码，描述 sharding集群 的各个类型节点(mongos/shard/config)内部如何管理集群状态。
